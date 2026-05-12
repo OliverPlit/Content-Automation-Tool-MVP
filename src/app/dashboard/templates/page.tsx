@@ -19,10 +19,12 @@ export default async function TemplatesPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-2xl font-semibold text-zinc-900">Templates</h1>
-      <p className="mt-2 text-sm text-zinc-600">
-        Wiederverwendbare Prompt-Vorlagen für deine Creative-Generierungen.
-      </p>
+      <header className="mb-6 rounded-2xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 px-6 py-7 text-white shadow-xl shadow-blue-900/20">
+        <h1 className="text-3xl font-bold tracking-tight">Templates</h1>
+        <p className="mt-1 text-sm text-blue-100">
+          Wiederverwendbare Prompt-Vorlagen für deine Creative-Generierungen.
+        </p>
+      </header>
 
       {error && (
         <p className="mt-6 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -31,7 +33,7 @@ export default async function TemplatesPage() {
       )}
 
       {templates.length === 0 ? (
-        <div className="mt-8 rounded-xl border border-dashed border-zinc-300 bg-white p-10 text-center text-sm text-zinc-500">
+        <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
           Noch keine Templates vorhanden.
         </div>
       ) : (
@@ -39,18 +41,18 @@ export default async function TemplatesPage() {
           {templates.map((t) => (
             <li
               key={t.id}
-              className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm"
+              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-blue-900/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-900/10"
             >
               <div className="flex items-center justify-between">
-                <div className="font-medium text-zinc-900">{t.name}</div>
+                <div className="font-medium text-slate-900">{t.name}</div>
                 {t.user_id === null && (
-                  <span className="rounded bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">
+                  <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">
                     System
                   </span>
                 )}
               </div>
               {t.description && (
-                <p className="mt-1 text-sm text-zinc-600">{t.description}</p>
+                <p className="mt-1 text-sm text-slate-600">{t.description}</p>
               )}
             </li>
           ))}

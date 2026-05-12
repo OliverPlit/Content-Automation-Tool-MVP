@@ -18,7 +18,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-50">
+    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-slate-100">
       <Sidebar />
       <div className="flex flex-1 flex-col">
         <Header email={user.email ?? ""} />
