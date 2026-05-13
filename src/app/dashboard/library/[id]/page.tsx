@@ -6,7 +6,10 @@ import { adCopySchema, type AdCopy } from "../../generate/schema";
 import { CreativeWorkspace } from "./creative-workspace";
 import type { ImageProvider, VariantImage } from "./image-actions";
 import type { RenderRecord } from "./render-actions";
-import type { TemplateKind } from "@/lib/creatomate/templates";
+import {
+  getTemplateAvailability,
+  type TemplateKind,
+} from "@/lib/creatomate/templates";
 
 type Params = Promise<{ id: string }>;
 
@@ -89,6 +92,7 @@ export default async function CreativeDetailPage({ params }: { params: Params })
             renders={renders}
             createdAt={data.created_at}
             promptText={data.prompt}
+            templateAvailability={getTemplateAvailability()}
           />
         </div>
       ) : (

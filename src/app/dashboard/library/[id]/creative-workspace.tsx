@@ -13,6 +13,7 @@ import type { VariantImage } from "./image-actions";
 import { VariantImageBlock } from "./variant-image-block";
 import { VariantRendersBlock } from "./variant-renders-block";
 import type { RenderRecord } from "./render-actions";
+import type { TemplateKind } from "@/lib/creatomate/templates";
 
 const initialUpdate: UpdateState = { ok: false };
 
@@ -23,6 +24,7 @@ export function CreativeWorkspace({
   renders,
   createdAt,
   promptText,
+  templateAvailability,
 }: {
   id: string;
   initial: AdCopy;
@@ -30,6 +32,7 @@ export function CreativeWorkspace({
   renders: RenderRecord[];
   createdAt: string;
   promptText: string;
+  templateAvailability: Record<TemplateKind, boolean>;
 }) {
   const [active, setActive] = useState(0);
 
@@ -69,6 +72,7 @@ export function CreativeWorkspace({
         cta={initial.variants[active].cta}
         image={imageByVariant.get(active) ?? null}
         renders={rendersByVariant.get(active) ?? []}
+        templateAvailability={templateAvailability}
       />
 
       <DangerZone id={id} />
@@ -263,6 +267,7 @@ function VariantPanel({
   cta,
   image,
   renders,
+  templateAvailability,
 }: {
   creativeId: string;
   index: number;
@@ -270,6 +275,7 @@ function VariantPanel({
   cta: string;
   image: VariantImage | null;
   renders: RenderRecord[];
+  templateAvailability: Record<TemplateKind, boolean>;
 }) {
   return (
     <section className="space-y-4">
@@ -289,6 +295,7 @@ function VariantPanel({
         variantIndex={index}
         renders={renders}
         hasImage={!!image}
+        templateAvailability={templateAvailability}
       />
     </section>
   );

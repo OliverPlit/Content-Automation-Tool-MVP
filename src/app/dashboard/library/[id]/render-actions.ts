@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { adCopySchema } from "../../generate/schema";
-import { TEMPLATES } from "@/lib/creatomate/templates";
+import { TEMPLATE_META, getTemplateId } from "@/lib/creatomate/templates";
 
 const CREATOMATE_API_BASE = "https://api.creatomate.com/v1";
 const ACCENT_COLOR_DEFAULT = "#4F46E5"; // Indigo-600, passt zum übrigen UI
@@ -63,12 +63,13 @@ export async function startRender(
     return { ok: false, error: "Template-Typ unbekannt." };
 
   const templateKind = templateKindParsed.data;
-  const template = TEMPLATES[templateKind];
+  const template = TEMPLATE_META[templateKind];
+  const templateId = getTemplateId(templateKind);
 
-  if (!template.id) {
+  if (!templateId) {
     return {
       ok: false,
-      error: `Template-ID für "${template.label}" fehlt — bitte CREATOMATE_TEMPLATE_${templateKind.toUpperCase()} in der Env setzen.`,
+      error: `Template-ID für "${template.label}" fehlt — bitte ${template.envVar} in der Env setzen.`,
     };
   }
   if (!process.env.CREATOMATE_API_KEY) {
@@ -139,14 +140,31 @@ export async function startRender(
   }
 
   // 3) Creatomate-API: Render starten
+  // Send each value in BOTH the short form and the explicit `Element.property`
+  // form, and across the two naming conventions we've used in templates
+  // ("Background"/"Image-URL" for images, "CTA-Box"/"Accent-Color" for the
+  // accent box). Creatomate silently ignores keys that don't match a real
+  // element/property, so over-sending is safe.
   const body = {
-    template_id: template.id,
+    template_id: templateId,
     modifications: {
+      // Text
       "Headline": adCopy.headline,
+      "Headline.text": adCopy.headline,
       "Subline": adCopy.subline,
+      "Subline.text": adCopy.subline,
       "CTA": variant.cta,
+      "CTA.text": variant.cta,
+      // Image source
+      "Background": imageUrlClean,
+      "Background.source": imageUrlClean,
       "Image-URL": imageUrlClean,
+      "Image-URL.source": imageUrlClean,
+      // Accent color
+      "CTA-Box": ACCENT_COLOR_DEFAULT,
+      "CTA-Box.fill_color": ACCENT_COLOR_DEFAULT,
       "Accent-Color": ACCENT_COLOR_DEFAULT,
+      "Accent-Color.fill_color": ACCENT_COLOR_DEFAULT,
     },
   };
 

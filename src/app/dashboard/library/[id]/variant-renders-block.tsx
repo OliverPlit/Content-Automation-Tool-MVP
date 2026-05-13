@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 
-import { TEMPLATES, type TemplateKind } from "@/lib/creatomate/templates";
+import { TEMPLATE_META, type TemplateKind } from "@/lib/creatomate/templates";
 import {
   type RenderRecord,
   type RenderState,
@@ -24,11 +24,13 @@ export function VariantRendersBlock({
   variantIndex,
   renders,
   hasImage,
+  templateAvailability,
 }: {
   creativeId: string;
   variantIndex: number;
   renders: RenderRecord[];
   hasImage: boolean;
+  templateAvailability: Record<TemplateKind, boolean>;
 }) {
   const [state, formAction] = useActionState(startRender, initial);
 
@@ -58,7 +60,7 @@ export function VariantRendersBlock({
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         {TEMPLATE_ORDER.map((kind) => {
-          const tpl = TEMPLATES[kind];
+          const tpl = TEMPLATE_META[kind];
           const record = byKind.get(kind) ?? null;
           return (
             <RenderSlot
@@ -68,7 +70,7 @@ export function VariantRendersBlock({
               templateKind={kind}
               templateLabel={tpl.label}
               templateDescription={tpl.description}
-              hasTemplateId={!!tpl.id}
+              hasTemplateId={templateAvailability[kind]}
               outputExt={tpl.outputExt}
               record={record}
               disabled={!hasImage}
