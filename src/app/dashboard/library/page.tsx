@@ -33,7 +33,9 @@ export default async function LibraryPage() {
   // Gemeinsamer Round-Trip für Bilder und Renders aller gelisteten Creatives.
   const imagesByCreative = new Map<string, number[]>();
   const rendersByCreative = new Map<string, number[]>();
+  const renderFormatsByCreative = new Map<string, Set<string>>();
   const firstImageUrl = new Map<string, string>();
+  const firstRenderUrl = new Map<string, string>();
 
   if (creatives.length > 0) {
     const ids = creatives.map((c) => c.id);
@@ -45,9 +47,10 @@ export default async function LibraryPage() {
         .order("variant_index", { ascending: true }),
       supabase
         .from("creative_renders")
-        .select("creative_id, variant_index")
+        .select("creative_id, variant_index, template_kind, output_url")
         .in("creative_id", ids)
-        .eq("status", "succeeded"),
+        .eq("status", "succeeded")
+        .order("variant_index", { ascending: true }),
     ]);
 
     (imageRows ?? []).forEach((row) => {
@@ -62,9 +65,18 @@ export default async function LibraryPage() {
     (renderRows ?? []).forEach((row) => {
       const cid = row.creative_id as string;
       const vi = row.variant_index as number;
+      const tk = row.template_kind as string;
+      const url = row.output_url as string | null;
+
       const arr = rendersByCreative.get(cid) ?? [];
       if (!arr.includes(vi)) arr.push(vi);
       rendersByCreative.set(cid, arr);
+
+      const formats = renderFormatsByCreative.get(cid) ?? new Set<string>();
+      formats.add(tk);
+      renderFormatsByCreative.set(cid, formats);
+
+      if (url && !firstRenderUrl.has(cid)) firstRenderUrl.set(cid, url);
     });
   }
 
@@ -74,9 +86,12 @@ export default async function LibraryPage() {
     status: c.status,
     createdAt: c.created_at,
     output: parseOutput(c.output),
-    thumbnailUrl: firstImageUrl.get(c.id) ?? null,
+    // Render-Thumbnail bevorzugen wenn vorhanden, sonst Bild, sonst null.
+    thumbnailUrl:
+      firstRenderUrl.get(c.id) ?? firstImageUrl.get(c.id) ?? null,
     imagesByVariant: imagesByCreative.get(c.id) ?? [],
     rendersByVariant: rendersByCreative.get(c.id) ?? [],
+    renderFormats: Array.from(renderFormatsByCreative.get(c.id) ?? []),
   }));
 
   return (

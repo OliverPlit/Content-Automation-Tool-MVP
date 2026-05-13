@@ -49,22 +49,22 @@ export default function GeneratePage() {
               label="Produkt / Service"
               error={genState.fieldErrors?.product}
             >
-              <textarea
+              <CharCountTextarea
                 name="product"
                 rows={3}
                 required
+                maxLength={500}
                 placeholder="z.B. nachhaltige Sneaker aus recyceltem Ozeanplastik"
-                className={inputCls}
               />
             </Field>
 
             <Field label="Zielgruppe" error={genState.fieldErrors?.audience}>
-              <input
+              <CharCountInput
                 name="audience"
                 type="text"
                 required
+                maxLength={300}
                 placeholder="z.B. umweltbewusste Berufstätige, 25–40"
-                className={inputCls}
               />
             </Field>
 
@@ -328,6 +328,62 @@ function Field({
       <label className="block text-sm font-medium text-slate-700">{label}</label>
       <div className="mt-1">{children}</div>
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+function CharCountTextarea({
+  maxLength,
+  ...rest
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { maxLength: number }) {
+  const [value, setValue] = useState("");
+  return (
+    <div className="relative">
+      <textarea
+        {...rest}
+        maxLength={maxLength}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className={inputCls}
+      />
+      <span
+        className={
+          "absolute bottom-1.5 right-2 text-[10px] tabular-nums " +
+          (value.length > maxLength * 0.9
+            ? "text-amber-600"
+            : "text-slate-400")
+        }
+      >
+        {value.length}/{maxLength}
+      </span>
+    </div>
+  );
+}
+
+function CharCountInput({
+  maxLength,
+  ...rest
+}: React.InputHTMLAttributes<HTMLInputElement> & { maxLength: number }) {
+  const [value, setValue] = useState("");
+  return (
+    <div className="relative">
+      <input
+        {...rest}
+        maxLength={maxLength}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className={inputCls}
+      />
+      <span
+        className={
+          "pointer-events-none absolute inset-y-0 right-2 flex items-center text-[10px] tabular-nums " +
+          (value.length > maxLength * 0.9
+            ? "text-amber-600"
+            : "text-slate-400")
+        }
+      >
+        {value.length}/{maxLength}
+      </span>
     </div>
   );
 }
