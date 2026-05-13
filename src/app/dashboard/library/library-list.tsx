@@ -24,7 +24,11 @@ export type LibraryItem = {
   imagesByVariant: number[];
   rendersByVariant: number[];
   renderFormats: string[]; // staticSquare | animatedSquare | reelVertical
+  projectId: string | null;
+  projectName: string | null;
 };
+
+export type ProjectOption = { id: string; name: string };
 
 type SortKey = "newest" | "oldest" | "headline";
 type Filter = "all" | "with-image" | "with-render";
@@ -33,13 +37,20 @@ type ViewMode = "list" | "grid";
 
 const initialUpdate: UpdateState = { ok: false };
 
-export function LibraryList({ items }: { items: LibraryItem[] }) {
+export function LibraryList({
+  items,
+  projects = [],
+}: {
+  items: LibraryItem[];
+  projects?: ProjectOption[];
+}) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("newest");
   const [filter, setFilter] = useState<Filter>("all");
   const [formatFilter, setFormatFilter] = useState<Set<FormatFilter>>(
     new Set(),
   );
+  const [projectFilter, setProjectFilter] = useState<string>("all"); // "all" | "none" | <projectId>
   const [view, setView] = useState<ViewMode>("list");
 
   const toggleFormat = (f: FormatFilter) =>
@@ -63,6 +74,12 @@ export function LibraryList({ items }: { items: LibraryItem[] }) {
       list = list.filter((i) =>
         i.renderFormats.some((f) => formatFilter.has(f as FormatFilter)),
       );
+    }
+
+    if (projectFilter === "none") {
+      list = list.filter((i) => !i.projectId);
+    } else if (projectFilter !== "all") {
+      list = list.filter((i) => i.projectId === projectFilter);
     }
 
     const q = query.trim().toLowerCase();
@@ -90,7 +107,7 @@ export function LibraryList({ items }: { items: LibraryItem[] }) {
       return ha.localeCompare(hb, "de");
     });
     return sorted;
-  }, [items, query, sort, filter, formatFilter]);
+  }, [items, query, sort, filter, formatFilter, projectFilter]);
 
   const counts = useMemo(
     () => ({
@@ -130,6 +147,21 @@ export function LibraryList({ items }: { items: LibraryItem[] }) {
             <option value="oldest">Älteste zuerst</option>
             <option value="headline">Headline A–Z</option>
           </select>
+          {projects.length > 0 && (
+            <select
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            >
+              <option value="all">📁 Alle Projekte</option>
+              <option value="none">📁 Ohne Projekt</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  📁 {p.name}
+                </option>
+              ))}
+            </select>
+          )}
           <ViewToggle view={view} setView={setView} />
         </div>
 
@@ -299,6 +331,10 @@ function ItemRow({ item }: { item: LibraryItem }) {
                 rendersByVariant={item.rendersByVariant}
               />
               <FormatPills formats={item.renderFormats} />
+              <ProjectTag
+                projectId={item.projectId}
+                projectName={item.projectName}
+              />
               <span className="text-xs text-slate-400">
                 {new Date(item.createdAt).toLocaleDateString("de-DE")}
               </span>
@@ -367,6 +403,10 @@ function ItemCard({ item }: { item: LibraryItem }) {
                 rendersByVariant={item.rendersByVariant}
               />
               <FormatPills formats={item.renderFormats} />
+              <ProjectTag
+                projectId={item.projectId}
+                projectName={item.projectName}
+              />
             </div>
             <div className="mt-auto flex items-center justify-between pt-3 text-xs text-slate-400">
               <span>
@@ -567,6 +607,25 @@ function VariantDots({
         );
       })}
     </div>
+  );
+}
+
+function ProjectTag({
+  projectId,
+  projectName,
+}: {
+  projectId: string | null;
+  projectName: string | null;
+}) {
+  if (!projectId || !projectName) return null;
+  return (
+    <Link
+      href={`/dashboard/projects/${projectId}`}
+      onClick={(e) => e.stopPropagation()}
+      className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800 ring-1 ring-blue-200 hover:bg-blue-100 hover:ring-blue-300"
+    >
+      📁 {projectName}
+    </Link>
   );
 }
 

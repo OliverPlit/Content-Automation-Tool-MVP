@@ -10,6 +10,7 @@ import {
   getTemplateAvailability,
   type TemplateKind,
 } from "@/lib/creatomate/templates";
+import { ProjectPicker, type ProjectOption } from "./project-picker";
 
 type Params = Promise<{ id: string }>;
 
@@ -21,10 +22,11 @@ export default async function CreativeDetailPage({ params }: { params: Params })
     { data, error },
     { data: imageRows },
     { data: renderRows },
+    { data: projectRows },
   ] = await Promise.all([
     supabase
       .from("creatives")
-      .select("id, prompt, output, status, created_at")
+      .select("id, prompt, output, status, created_at, project_id")
       .eq("id", id)
       .single(),
     supabase
@@ -36,6 +38,10 @@ export default async function CreativeDetailPage({ params }: { params: Params })
       .select("id, variant_index, template_kind, status, output_url, error_message")
       .eq("creative_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("projects")
+      .select("id, name")
+      .order("name", { ascending: true }),
   ]);
 
   if (error || !data) notFound();
@@ -57,7 +63,6 @@ export default async function CreativeDetailPage({ params }: { params: Params })
     provider: (r.provider as ImageProvider | null) ?? null,
   }));
 
-  // Pro (variant, template) nur den neuesten Render behalten.
   const seenRender = new Set<string>();
   const renders: RenderRecord[] = [];
   (renderRows ?? []).forEach((r) => {
@@ -74,6 +79,11 @@ export default async function CreativeDetailPage({ params }: { params: Params })
     });
   });
 
+  const projects: ProjectOption[] = (projectRows ?? []).map((p) => ({
+    id: p.id as string,
+    name: p.name as string,
+  }));
+
   return (
     <div className="mx-auto max-w-3xl">
       <Link
@@ -84,7 +94,12 @@ export default async function CreativeDetailPage({ params }: { params: Params })
       </Link>
 
       {parsed ? (
-        <div className="mt-4">
+        <div className="mt-4 space-y-4">
+          <ProjectPicker
+            creativeId={data.id}
+            currentProjectId={(data.project_id as string | null) ?? null}
+            projects={projects}
+          />
           <CreativeWorkspace
             id={data.id}
             initial={parsed}

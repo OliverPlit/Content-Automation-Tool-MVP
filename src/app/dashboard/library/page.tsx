@@ -8,6 +8,7 @@ type Row = {
   output: string | null;
   status: string;
   created_at: string;
+  project_id: string | null;
 };
 
 function parseOutput(raw: string | null) {
@@ -22,13 +23,29 @@ function parseOutput(raw: string | null) {
 
 export default async function LibraryPage() {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("creatives")
-    .select("id, prompt, output, status, created_at")
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const [
+    { data, error },
+    { data: projectRows },
+  ] = await Promise.all([
+    supabase
+      .from("creatives")
+      .select("id, prompt, output, status, created_at, project_id")
+      .order("created_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("projects")
+      .select("id, name")
+      .order("name", { ascending: true }),
+  ]);
 
   const creatives = (data ?? []) as Row[];
+  const projectMap = new Map<string, string>(
+    (projectRows ?? []).map((p) => [p.id as string, p.name as string]),
+  );
+  const projectsList = (projectRows ?? []).map((p) => ({
+    id: p.id as string,
+    name: p.name as string,
+  }));
 
   // Gemeinsamer Round-Trip für Bilder und Renders aller gelisteten Creatives.
   const imagesByCreative = new Map<string, number[]>();
@@ -86,12 +103,13 @@ export default async function LibraryPage() {
     status: c.status,
     createdAt: c.created_at,
     output: parseOutput(c.output),
-    // Render-Thumbnail bevorzugen wenn vorhanden, sonst Bild, sonst null.
     thumbnailUrl:
       firstRenderUrl.get(c.id) ?? firstImageUrl.get(c.id) ?? null,
     imagesByVariant: imagesByCreative.get(c.id) ?? [],
     rendersByVariant: rendersByCreative.get(c.id) ?? [],
     renderFormats: Array.from(renderFormatsByCreative.get(c.id) ?? []),
+    projectId: c.project_id ?? null,
+    projectName: c.project_id ? (projectMap.get(c.project_id) ?? null) : null,
   }));
 
   return (
@@ -110,7 +128,7 @@ export default async function LibraryPage() {
         </p>
       )}
 
-      <LibraryList items={items} />
+      <LibraryList items={items} projects={projectsList} />
     </div>
   );
 }
