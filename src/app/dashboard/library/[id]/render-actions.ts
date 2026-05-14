@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
-import { adCopySchema } from "../../generate/schema";
+import { adCopyLooseSchema } from "../../generate/schema";
 import { TEMPLATE_META, getTemplateId } from "@/lib/creatomate/templates";
 
 const CREATOMATE_API_BASE = "https://api.creatomate.com/v1";
@@ -107,9 +107,9 @@ export async function startRender(
     };
   }
 
-  let adCopy: z.infer<typeof adCopySchema>;
+  let adCopy: z.infer<typeof adCopyLooseSchema>;
   try {
-    const parsed = adCopySchema.safeParse(JSON.parse(creativeRow.output ?? ""));
+    const parsed = adCopyLooseSchema.safeParse(JSON.parse(creativeRow.output ?? ""));
     if (!parsed.success)
       return { ok: false, error: "Ad-Copy hat ein unerwartetes Format." };
     adCopy = parsed.data;

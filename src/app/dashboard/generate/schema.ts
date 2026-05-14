@@ -113,12 +113,30 @@ export const adVariantSchema = z.object({
   cta: z.string().min(1).max(30),
 });
 
+// Strict schema — used by generateObject (OpenAI Structured Outputs verlangt
+// alle Felder REQUIRED, .optional() ist da nicht erlaubt).
 export const adCopySchema = z.object({
   headline: z.string().min(1).max(60),
   subline: z.string().min(1).max(120),
   variants: z.array(adVariantSchema).min(1).max(10),
-  // Optional + Default für Backward-Compat: Legacy-Rows (vor diesem Feature)
-  // haben kein imagePrompt; neue Generierungen befüllen es immer.
+  imagePrompt: z.string().min(1).max(800),
+});
+
+// Loose schema — zum Parsen aus der DB, damit Legacy-Rows (vor diesem
+// Feature) ohne imagePrompt weiter funktionieren. Wird in Library/Render/
+// Image-Action-Code verwendet, wo nur GELESEN wird.
+export const adCopyLooseSchema = z.object({
+  headline: z.string().min(1).max(200),
+  subline: z.string().min(1).max(300),
+  variants: z
+    .array(
+      z.object({
+        body: z.string().min(1).max(600),
+        cta: z.string().min(1).max(60),
+      }),
+    )
+    .min(1)
+    .max(10),
   imagePrompt: z.string().max(800).optional().default(""),
 });
 

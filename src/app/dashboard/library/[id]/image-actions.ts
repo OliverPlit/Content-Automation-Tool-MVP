@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
-import { adCopySchema } from "../../generate/schema";
+import { adCopyLooseSchema } from "../../generate/schema";
 
 export type ImageProvider = "openai" | "gemini";
 
@@ -81,9 +81,9 @@ export async function generateCreativeImage(
     .single();
   if (loadErr || !row) return { ok: false, error: "Creative nicht gefunden." };
 
-  let adCopy: z.infer<typeof adCopySchema>;
+  let adCopy: z.infer<typeof adCopyLooseSchema>;
   try {
-    const parsed = adCopySchema.safeParse(JSON.parse(row.output ?? ""));
+    const parsed = adCopyLooseSchema.safeParse(JSON.parse(row.output ?? ""));
     if (!parsed.success)
       return { ok: false, error: "Ad-Copy hat das falsche Format." };
     adCopy = parsed.data;

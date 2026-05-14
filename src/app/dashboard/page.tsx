@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
-import { adCopySchema } from "./generate/schema";
+import { adCopyLooseSchema } from "./generate/schema";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -204,7 +204,7 @@ export default async function DashboardPage() {
 function safeParse(raw: string | null) {
   if (!raw) return null;
   try {
-    const result = adCopySchema.safeParse(JSON.parse(raw));
+    const result = adCopyLooseSchema.safeParse(JSON.parse(raw));
     return result.success ? result.data : null;
   } catch {
     return null;

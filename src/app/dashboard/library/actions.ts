@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
-import { adCopySchema } from "../generate/schema";
+import { adCopyLooseSchema } from "../generate/schema";
 
 export type UpdateState = {
   ok: boolean;
@@ -49,7 +49,7 @@ async function loadAdCopy(supabase: Awaited<ReturnType<typeof createClient>>, id
     .single();
   if (error || !data) return { ok: false as const, error: "Creative nicht gefunden." };
   try {
-    const parsed = adCopySchema.safeParse(JSON.parse(data.output ?? ""));
+    const parsed = adCopyLooseSchema.safeParse(JSON.parse(data.output ?? ""));
     if (!parsed.success)
       return { ok: false as const, error: "Bestehender Output hat falsches Format." };
     return { ok: true as const, output: parsed.data };
@@ -61,13 +61,22 @@ async function loadAdCopy(supabase: Awaited<ReturnType<typeof createClient>>, id
 async function writeAdCopy(
   supabase: Awaited<ReturnType<typeof createClient>>,
   id: string,
-  output: z.infer<typeof adCopySchema>,
+  output: z.infer<typeof adCopyLooseSchema>,
 ) {
-  const safe = adCopySchema.safeParse(output);
+  // Beim Schreiben akzeptieren wir das looser Schema (Legacy-Rows ohne
+  // imagePrompt sollen erhalten bleiben), aber speichern wir explizit
+  // imagePrompt als "" wenn es fehlt.
+  const safe = adCopyLooseSchema.safeParse(output);
   if (!safe.success) return { ok: false as const, error: "Neuer Output entspricht nicht dem Schema." };
+  const payload = {
+    headline: safe.data.headline,
+    subline: safe.data.subline,
+    variants: safe.data.variants,
+    imagePrompt: safe.data.imagePrompt ?? "",
+  };
   const { error } = await supabase
     .from("creatives")
-    .update({ output: JSON.stringify(safe.data) })
+    .update({ output: JSON.stringify(payload) })
     .eq("id", id);
   if (error) return { ok: false as const, error: `DB-Fehler: ${error.message}` };
   revalidatePath("/dashboard/library");

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { adCopySchema, type AdCopy } from "../../generate/schema";
+import { adCopyLooseSchema, type AdCopy } from "../../generate/schema";
 import { CreativeWorkspace } from "./creative-workspace";
 import type { ImageProvider, VariantImage } from "./image-actions";
 import type { RenderRecord } from "./render-actions";
@@ -49,7 +49,7 @@ export default async function CreativeDetailPage({ params }: { params: Params })
   let parsed: AdCopy | null = null;
   if (data.output) {
     try {
-      const result = adCopySchema.safeParse(JSON.parse(data.output));
+      const result = adCopyLooseSchema.safeParse(JSON.parse(data.output));
       parsed = result.success ? result.data : null;
     } catch {
       parsed = null;

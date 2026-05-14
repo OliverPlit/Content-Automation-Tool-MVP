@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { adCopySchema } from "../../generate/schema";
+import { adCopyLooseSchema } from "../../generate/schema";
 import { LibraryList, type LibraryItem } from "../../library/library-list";
 import { ProjectHeader } from "./project-header";
 
@@ -11,7 +11,7 @@ type Params = Promise<{ id: string }>;
 function parseOutput(raw: string | null) {
   if (!raw) return null;
   try {
-    const parsed = adCopySchema.safeParse(JSON.parse(raw));
+    const parsed = adCopyLooseSchema.safeParse(JSON.parse(raw));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
