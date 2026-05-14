@@ -12,7 +12,9 @@ import {
   MACHINES,
   TONES,
   adCopySchema,
+  generatedVariantSchema,
   type AngleValue,
+  type GeneratedVariant,
   type GenerateInput,
   type GenerateState,
   type MachineValue,
@@ -38,8 +40,6 @@ const inputSchema = z.object({
   websiteText: z.string().max(3000).optional().or(z.literal("")),
   variantCount: z.coerce.number().int().min(1).max(10).default(3),
   imageSource: z.enum(IMAGE_SOURCES).default("ai"),
-  // Bei imageSource="upload" enthält customImageUrl die Storage-URL des vorab
-  // hochgeladenen Bildes; bei "url" die vom User eingegebene Bild-URL.
   customImageUrl: z.string().url().optional().or(z.literal("")),
 });
 
@@ -47,7 +47,8 @@ function buildSystemPrompt(
   machine: MachineValue,
   angle: AngleValue,
   websiteText: string | undefined,
-  variantCount: number,
+  variantNumber: number,
+  variantTotal: number,
 ): string {
   const machineMeta = MACHINES.find((m) => m.value === machine)!;
   const angleMeta = ANGLES.find((a) => a.value === angle)!;
@@ -64,37 +65,114 @@ BRAND-KERN (subtil einweben, nicht in jedem Text wiederholen):
 - Hochwertige Schmierstoffe, Öle, Fette für Maschinen und Fahrzeuge
 
 PFLICHT-SPRACHE:
-- Deutsch, Tonfall bodenständig + kompetent, kein Marketing-Geschwätz
-- Anrede: bevorzugt "Du", bei Premium/Industrie-Kontext auch "Sie" möglich
-- Aktive CTAs im Imperativ: "Jetzt bestellen!", "Direkt sichern!", "Hol dir den Vorteil!"
-- KEINE Anglizismen wenn deutsche Wörter genauso gut funktionieren
+- Deutsch, bodenständig + kompetent, kein Marketing-Geschwätz
+- Anrede bevorzugt "Du", bei Premium/Industrie auch "Sie" möglich
+- Aktive CTAs im Imperativ: "Jetzt bestellen!", "Direkt sichern!"
+- Keine Anglizismen ohne Grund
 
 MASCHINEN-KONTEXT: ${machineMeta.label}
-Die Texte adressieren konkret diesen Maschinen-/Einsatz-Kontext.
-
 ANGLE: ${angleMeta.label}
 ${angleMeta.voiceHint}
 ${websiteSection}
-LÄNGEN-VORGABEN (HARTE GRENZEN):
+Du generierst gerade VARIANTE ${variantNumber} von ${variantTotal}. Diese
+Variante muss sich von den anderen Varianten in HOOK und FORMULIERUNG
+deutlich unterscheiden — gleiches Produkt, anderer Ansatz.
+
+LÄNGEN-VORGABEN (HART):
 - headline: max 60 Zeichen, 1 starker Hook, kein Punkt am Ende
-- subline: max 120 Zeichen, ergänzt die Headline mit einem konkreten Vorteil
-- variants: GENAU ${variantCount} Varianten, jede mit:
-  - body: max 300 Zeichen, 1–3 kurze Sätze, kein Marketing-Filler, direkter Nutzen
-  - cta: max 30 Zeichen, aktiver Imperativ ("Jetzt kaufen!", "Direkt bestellen!", "Hier sichern!")
-
-Die ${variantCount} Varianten müssen DEUTLICH unterschiedliche Hooks nutzen — z. B. Preis-Hook, Performance-Hook, Tradition-Hook, Dringlichkeit, sozialer Beweis. Keine Variante darf eine andere wiederholen.
-
-BILD-PROMPT (FELD imagePrompt):
-Schreibe in ENGLISCH einen detaillierten Bild-Prompt für ein Foto-Modell.
-Pflicht-Elemente:
-- Szene passend zur Maschine: ${machineMeta.sceneHint}
-- Stil: "professional product photography, realistic, dramatic natural lighting, 1:1 square composition"
-- Pflicht-Suffix: "no text, no logos, no watermarks, no readable signage"
-Halte den Bild-Prompt unter 800 Zeichen. KEIN Brand-Name (kein "WODOIL", kein "ÖMV"), nur generisches "yellow lubricant canister / oil drum".
+- subline: max 120 Zeichen, ergänzt mit konkretem Vorteil
+- body: max 300 Zeichen, 1–3 kurze Sätze, direkter Nutzen
+- cta: max 30 Zeichen, aktiver Imperativ
+- imagePrompt: ENGLISCH, max 800 Zeichen.
+  Pflicht-Elemente:
+   - Szene: ${machineMeta.sceneHint}
+   - "professional product photography, realistic, dramatic natural lighting, 1:1 square composition"
+   - Pflicht-Suffix: "no text, no logos, no watermarks, no readable signage"
+  Kein Brand-Name (kein "WODOIL"), nur generisches "yellow lubricant canister / oil drum".
 
 OUTPUT: ausschließlich im JSON-Schema. Keine Erklärungen, keine Markdown-Codeblöcke.`;
 }
 
+// ---------------------------------------------------------------------------
+// Pro-Variante: 1× Copy + 1× Bild (je nach Source)
+// ---------------------------------------------------------------------------
+async function generateOneVariant(args: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  variantNumber: number; // 1-basiert
+  variantTotal: number;
+  product: string;
+  audience: string;
+  tone: string;
+  machine: MachineValue;
+  angle: AngleValue;
+  websiteText: string | undefined;
+  imageSource: "ai" | "upload" | "url";
+  sharedImageUrl: string | undefined; // bei upload/url für alle gleich
+}): Promise<GeneratedVariant> {
+  const {
+    supabase,
+    userId,
+    variantNumber,
+    variantTotal,
+    product,
+    audience,
+    tone,
+    machine,
+    angle,
+    websiteText,
+    imageSource,
+    sharedImageUrl,
+  } = args;
+
+  // 1) Copy
+  const systemPrompt = buildSystemPrompt(
+    machine,
+    angle,
+    websiteText,
+    variantNumber,
+    variantTotal,
+  );
+  const userPrompt = `Produkt / Service: ${product}
+Zielgruppe: ${audience}
+Ton: ${tone}
+Maschinen-Kontext: ${machine}
+Angle: ${angle}
+Du bist Variante ${variantNumber} von ${variantTotal}.`;
+
+  const { object } = await generateObject({
+    model: openai("gpt-4o-mini"),
+    schema: generatedVariantSchema,
+    system: systemPrompt,
+    prompt: userPrompt,
+    temperature: 0.95, // höher → divergentere Varianten
+  });
+
+  // 2) Bild — je nach Source
+  let imageUrl: string | undefined;
+  let imageError: string | undefined;
+
+  if (imageSource === "ai") {
+    const result = await generateAiImage(supabase, userId, object.imagePrompt);
+    if (result.ok) imageUrl = result.url;
+    else imageError = result.error;
+  } else if (sharedImageUrl) {
+    imageUrl = sharedImageUrl;
+  } else {
+    imageError = "Keine Bild-Quelle übergeben.";
+  }
+
+  return {
+    ...object,
+    index: variantNumber,
+    imageUrl,
+    imageError,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// generateAdCopy — Hauptaction, parallelisiert pro Variante
+// ---------------------------------------------------------------------------
 export async function generateAdCopy(
   _prev: GenerateState,
   formData: FormData,
@@ -107,6 +185,8 @@ export async function generateAdCopy(
     angle: formData.get("angle"),
     websiteText: formData.get("websiteText") ?? "",
     variantCount: formData.get("variantCount") ?? "3",
+    imageSource: formData.get("imageSource") ?? "ai",
+    customImageUrl: formData.get("customImageUrl") ?? "",
   });
 
   if (!parsed.success) {
@@ -150,45 +230,67 @@ export async function generateAdCopy(
     customImageUrl,
   } = parsed.data;
 
-  const systemPrompt = buildSystemPrompt(
-    machine,
-    angle,
-    websiteText && websiteText.length > 0 ? websiteText : undefined,
-    variantCount,
-  );
-
-  const userPrompt = `Produkt / Service: ${product}
-Zielgruppe: ${audience}
-Ton: ${tone}
-Maschinen-Kontext: ${machine}
-Angle: ${angle}
-Anzahl Varianten: ${variantCount}`;
-
-  // 1) Copy generieren
-  let output: z.infer<typeof adCopySchema>;
-  try {
-    const { object } = await generateObject({
-      model: openai("gpt-4o-mini"),
-      schema: adCopySchema,
-      system: systemPrompt,
-      prompt: userPrompt,
-      temperature: 0.9,
-    });
-    // Sicherheitsnetz: falls Modell zu viele/wenige Varianten zurückgibt.
-    if (object.variants.length !== variantCount) {
-      object.variants = object.variants.slice(0, variantCount);
-    }
-    output = object;
-  } catch (err) {
-    const message =
-      err instanceof Error
-        ? err.message
-        : "Unbekannter Fehler bei der Generierung.";
-    return { ok: false, error: message };
-  }
-
   const cleanedCustomUrl =
     customImageUrl && customImageUrl.length > 0 ? customImageUrl : undefined;
+  const cleanedWebsite =
+    websiteText && websiteText.length > 0 ? websiteText : undefined;
+
+  // Shared image bei Upload/URL einmal aufbereiten (für URL: mirroring)
+  let sharedImageUrl: string | undefined;
+  if (imageSource === "upload") {
+    sharedImageUrl = cleanedCustomUrl;
+  } else if (imageSource === "url") {
+    if (!cleanedCustomUrl) {
+      return { ok: false, error: "Bitte gib eine Bild-URL ein." };
+    }
+    const mirrored = await mirrorExternalImage(
+      supabase,
+      user.id,
+      cleanedCustomUrl,
+    );
+    if (!mirrored.ok) {
+      return { ok: false, error: mirrored.error };
+    }
+    sharedImageUrl = mirrored.url;
+  }
+
+  // Parallel ausführen — jede Variante = 1 Copy-Call + ggf. 1 Bild-Call.
+  const settled = await Promise.allSettled(
+    Array.from({ length: variantCount }).map((_, i) =>
+      generateOneVariant({
+        supabase,
+        userId: user.id,
+        variantNumber: i + 1,
+        variantTotal: variantCount,
+        product,
+        audience,
+        tone,
+        machine,
+        angle,
+        websiteText: cleanedWebsite,
+        imageSource,
+        sharedImageUrl,
+      }),
+    ),
+  );
+
+  const variants: GeneratedVariant[] = [];
+  const failures: string[] = [];
+  settled.forEach((res, idx) => {
+    if (res.status === "fulfilled") {
+      variants.push(res.value);
+    } else {
+      const msg = res.reason instanceof Error ? res.reason.message : String(res.reason);
+      failures.push(`Variante ${idx + 1}: ${msg}`);
+    }
+  });
+
+  if (variants.length === 0) {
+    return {
+      ok: false,
+      error: failures.join(" · ") || "Keine Variante konnte generiert werden.",
+    };
+  }
 
   const input: GenerateInput = {
     product,
@@ -196,50 +298,20 @@ Anzahl Varianten: ${variantCount}`;
     tone,
     machine,
     angle,
-    websiteText: websiteText && websiteText.length > 0 ? websiteText : undefined,
+    websiteText: cleanedWebsite,
     variantCount,
     imageSource,
     customImageUrl: cleanedCustomUrl,
   };
 
-  // 2) Bild bereitstellen — je nach Quelle
-  let imageUrl: string | undefined;
-  let imageError: string | undefined;
-
-  if (imageSource === "upload") {
-    // Bild wurde vorab über /api/upload-preview hochgeladen → URL direkt nutzen.
-    if (!cleanedCustomUrl) {
-      imageError = "Kein Upload-Bild übergeben.";
-    } else {
-      imageUrl = cleanedCustomUrl;
-    }
-  } else if (imageSource === "url") {
-    // Vom User angegebene URL — wir mirrorn die Bytes in unseren Storage,
-    // damit später beim Save kein externer Fetch mehr nötig ist.
-    if (!cleanedCustomUrl) {
-      imageError = "Keine Bild-URL angegeben.";
-    } else {
-      const mirrored = await mirrorExternalImage(
-        supabase,
-        user.id,
-        cleanedCustomUrl,
-      );
-      if (mirrored.ok) imageUrl = mirrored.url;
-      else imageError = mirrored.error;
-    }
-  } else {
-    // AI-Pfad — gpt-image-1 + Storage-Upload
-    const ai = await generateAiImage(supabase, user.id, output.imagePrompt);
-    if (ai.ok) imageUrl = ai.url;
-    else imageError = ai.error;
-  }
-
   return {
     ok: true,
-    output,
+    variants: variants.sort((a, b) => a.index - b.index),
     input,
-    imageUrl,
-    imageError,
+    // Wenn EINIGE Varianten failed: Banner mit Hinweis
+    ...(failures.length > 0
+      ? { error: `${failures.length} Variante(n) fehlgeschlagen: ${failures.join(" · ")}` }
+      : {}),
   };
 }
 
@@ -260,7 +332,9 @@ async function generateAiImage(
     const bytes = image.uint8Array;
     const mediaType = image.mediaType || "image/png";
     const ext = mediaType.includes("png") ? "png" : "jpg";
-    const path = `${userId}/preview/${Date.now()}.${ext}`;
+    const path = `${userId}/preview/${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}.${ext}`;
     const { error: upErr } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(path, bytes, {
@@ -340,7 +414,7 @@ async function mirrorExternalImage(
 }
 
 // ---------------------------------------------------------------------------
-// Save-Pfad
+// saveCreative — eine einzelne Variante in die Library packen
 // ---------------------------------------------------------------------------
 const savePayloadSchema = z.object({
   product: z.string().min(1).max(500),
@@ -348,39 +422,40 @@ const savePayloadSchema = z.object({
   tone: z.enum(TONES),
   machine: z.enum(MACHINES.map((m) => m.value) as [MachineValue, ...MachineValue[]]),
   angle: z.enum(ANGLES.map((a) => a.value) as [AngleValue, ...AngleValue[]]),
-  output: adCopySchema,
-  previewImageUrl: z.string().url().optional().or(z.literal("")),
+  variantIndex: z.coerce.number().int().min(1).max(10),
+  headline: z.string().min(1).max(60),
+  subline: z.string().min(1).max(120),
+  body: z.string().min(1).max(300),
+  cta: z.string().min(1).max(30),
   imagePrompt: z.string().max(800).optional().or(z.literal("")),
+  previewImageUrl: z.string().url().optional().or(z.literal("")),
 });
 
 export async function saveCreative(
   _prev: SaveState,
   formData: FormData,
 ): Promise<SaveState> {
-  const rawOutput = formData.get("output");
-  if (typeof rawOutput !== "string") {
-    return { ok: false, error: "Kein Output zum Speichern." };
-  }
-
-  let parsedOutput: unknown;
-  try {
-    parsedOutput = JSON.parse(rawOutput);
-  } catch {
-    return { ok: false, error: "Output ist kein gültiges JSON." };
-  }
-
   const parsed = savePayloadSchema.safeParse({
     product: formData.get("product"),
     audience: formData.get("audience"),
     tone: formData.get("tone"),
     machine: formData.get("machine"),
     angle: formData.get("angle"),
-    output: parsedOutput,
-    previewImageUrl: formData.get("previewImageUrl") ?? "",
+    variantIndex: formData.get("variantIndex"),
+    headline: formData.get("headline"),
+    subline: formData.get("subline"),
+    body: formData.get("body"),
+    cta: formData.get("cta"),
     imagePrompt: formData.get("imagePrompt") ?? "",
+    previewImageUrl: formData.get("previewImageUrl") ?? "",
   });
   if (!parsed.success) {
-    return { ok: false, error: "Speicher-Daten sind unvollständig." };
+    return {
+      ok: false,
+      error:
+        "Speicher-Daten unvollständig. " +
+        parsed.error.issues.slice(0, 2).map((i) => i.message).join("; "),
+    };
   }
 
   const supabase = await createClient();
@@ -395,24 +470,35 @@ export async function saveCreative(
     tone,
     machine,
     angle,
-    output,
-    previewImageUrl,
+    variantIndex,
+    headline,
+    subline,
+    body,
+    cta,
     imagePrompt,
+    previewImageUrl,
   } = parsed.data;
+
+  const adCopy = adCopySchema.parse({
+    headline,
+    subline,
+    variants: [{ body, cta }],
+    imagePrompt: imagePrompt || "no-prompt",
+  });
 
   const promptText = `Produkt: ${product}
 Zielgruppe: ${audience}
 Ton: ${tone}
 Maschine: ${machine}
-Angle: ${angle}`;
+Angle: ${angle}
+Variante: ${variantIndex}`;
 
-  // 1) Creative-Row anlegen
   const { data: creativeRow, error: insertErr } = await supabase
     .from("creatives")
     .insert({
       user_id: user.id,
       prompt: promptText,
-      output: JSON.stringify(output),
+      output: JSON.stringify(adCopy),
       status: "completed",
     })
     .select("id")
@@ -424,8 +510,7 @@ Angle: ${angle}`;
     };
   }
 
-  // 2) Preview-Bild übernehmen: vom Preview-Pfad in den Variante-0-Pfad kopieren
-  //    Das spart Credits (Bild wurde schon generiert) und initialisiert Variante 0.
+  // Preview-Bild als Variante-0 in den finalen Pfad kopieren
   if (previewImageUrl) {
     try {
       const res = await fetch(previewImageUrl, { cache: "no-store" });
@@ -453,7 +538,7 @@ Angle: ${angle}`;
               creative_id: creativeRow.id,
               variant_index: 0,
               image_url: finalUrl,
-              image_prompt: imagePrompt || output.imagePrompt,
+              image_prompt: imagePrompt || null,
               provider: "openai",
             },
             { onConflict: "creative_id,variant_index" },
@@ -461,10 +546,14 @@ Angle: ${angle}`;
         }
       }
     } catch {
-      // Bild-Übernahme ist soft — Creative bleibt trotzdem gespeichert.
+      // soft-fail — Creative bleibt trotzdem gespeichert
     }
   }
 
   revalidatePath("/dashboard/library");
-  return { ok: true, savedId: creativeRow.id };
+  return {
+    ok: true,
+    savedId: creativeRow.id,
+    savedVariantIndex: variantIndex,
+  };
 }

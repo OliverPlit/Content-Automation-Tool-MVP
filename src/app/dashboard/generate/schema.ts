@@ -122,6 +122,22 @@ export const adCopySchema = z.object({
   imagePrompt: z.string().min(1).max(800),
 });
 
+// Single self-contained creative variant — used for parallel generation,
+// where every variant gets its OWN headline + subline + body + cta + image.
+export const generatedVariantSchema = z.object({
+  headline: z.string().min(1).max(60),
+  subline: z.string().min(1).max(120),
+  body: z.string().min(1).max(300),
+  cta: z.string().min(1).max(30),
+  imagePrompt: z.string().min(1).max(800),
+});
+
+export type GeneratedVariant = z.infer<typeof generatedVariantSchema> & {
+  index: number;
+  imageUrl?: string;
+  imageError?: string;
+};
+
 // Loose schema — zum Parsen aus der DB, damit Legacy-Rows (vor diesem
 // Feature) ohne imagePrompt weiter funktionieren. Wird in Library/Render/
 // Image-Action-Code verwendet, wo nur GELESEN wird.
@@ -175,14 +191,14 @@ export type GenerateState = {
       string
     >
   >;
-  output?: AdCopy;
+  variants?: GeneratedVariant[]; // jede Variante = eigenständiges Creative
   input?: GenerateInput;
-  imageUrl?: string;
-  imageError?: string;
 };
 
 export type SaveState = {
   ok: boolean;
   error?: string;
   savedId?: string;
+  // Welche Variante wurde gerade gespeichert (1-basierter Index aus dem Grid)
+  savedVariantIndex?: number;
 };
