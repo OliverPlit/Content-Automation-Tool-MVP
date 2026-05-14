@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
   ANGLES,
+  IMAGE_SOURCES,
   MACHINES,
   TONES,
   adCopySchema,
@@ -36,6 +37,10 @@ const inputSchema = z.object({
   angle: z.enum(ANGLES.map((a) => a.value) as [AngleValue, ...AngleValue[]]),
   websiteText: z.string().max(3000).optional().or(z.literal("")),
   variantCount: z.coerce.number().int().min(1).max(10).default(3),
+  imageSource: z.enum(IMAGE_SOURCES).default("ai"),
+  // Bei imageSource="upload" enthält customImageUrl die Storage-URL des vorab
+  // hochgeladenen Bildes; bei "url" die vom User eingegebene Bild-URL.
+  customImageUrl: z.string().url().optional().or(z.literal("")),
 });
 
 function buildSystemPrompt(
@@ -133,8 +138,17 @@ export async function generateAdCopy(
     };
   }
 
-  const { product, audience, tone, machine, angle, websiteText, variantCount } =
-    parsed.data;
+  const {
+    product,
+    audience,
+    tone,
+    machine,
+    angle,
+    websiteText,
+    variantCount,
+    imageSource,
+    customImageUrl,
+  } = parsed.data;
 
   const systemPrompt = buildSystemPrompt(
     machine,
@@ -173,6 +187,9 @@ Anzahl Varianten: ${variantCount}`;
     return { ok: false, error: message };
   }
 
+  const cleanedCustomUrl =
+    customImageUrl && customImageUrl.length > 0 ? customImageUrl : undefined;
+
   const input: GenerateInput = {
     product,
     audience,
@@ -181,42 +198,40 @@ Anzahl Varianten: ${variantCount}`;
     angle,
     websiteText: websiteText && websiteText.length > 0 ? websiteText : undefined,
     variantCount,
+    imageSource,
+    customImageUrl: cleanedCustomUrl,
   };
 
-  // 2) Bild generieren (soft-fail — Copy bleibt auch ohne Bild)
+  // 2) Bild bereitstellen — je nach Quelle
   let imageUrl: string | undefined;
   let imageError: string | undefined;
-  try {
-    const { image } = await generateImage({
-      model: openai.image("gpt-image-1"),
-      prompt: output.imagePrompt,
-      size: "1024x1024",
-    });
-    const bytes = image.uint8Array;
-    const mediaType = image.mediaType || "image/png";
-    const ext = mediaType.includes("png") ? "png" : "jpg";
 
-    // Preview-Pfad: wird beim Save in den finalen Pfad verschoben/kopiert.
-    const path = `${user.id}/preview/${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(path, bytes, {
-        contentType: mediaType,
-        upsert: true,
-        cacheControl: "0",
-      });
-    if (upErr) throw new Error(upErr.message);
-
-    const { data: pub } = supabase.storage
-      .from(STORAGE_BUCKET)
-      .getPublicUrl(path);
-    imageUrl = `${pub.publicUrl}?v=${Date.now()}`;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unbekannter Bildfehler.";
-    const isQuota = /quota|rate.?limit|429|billing/i.test(msg);
-    imageError = isQuota
-      ? "Bild konnte nicht erzeugt werden (Limit/Billing). Copy ist trotzdem fertig."
-      : `Bild konnte nicht erzeugt werden: ${msg}`;
+  if (imageSource === "upload") {
+    // Bild wurde vorab über /api/upload-preview hochgeladen → URL direkt nutzen.
+    if (!cleanedCustomUrl) {
+      imageError = "Kein Upload-Bild übergeben.";
+    } else {
+      imageUrl = cleanedCustomUrl;
+    }
+  } else if (imageSource === "url") {
+    // Vom User angegebene URL — wir mirrorn die Bytes in unseren Storage,
+    // damit später beim Save kein externer Fetch mehr nötig ist.
+    if (!cleanedCustomUrl) {
+      imageError = "Keine Bild-URL angegeben.";
+    } else {
+      const mirrored = await mirrorExternalImage(
+        supabase,
+        user.id,
+        cleanedCustomUrl,
+      );
+      if (mirrored.ok) imageUrl = mirrored.url;
+      else imageError = mirrored.error;
+    }
+  } else {
+    // AI-Pfad — gpt-image-1 + Storage-Upload
+    const ai = await generateAiImage(supabase, user.id, output.imagePrompt);
+    if (ai.ok) imageUrl = ai.url;
+    else imageError = ai.error;
   }
 
   return {
@@ -226,6 +241,102 @@ Anzahl Varianten: ${variantCount}`;
     imageUrl,
     imageError,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Image helpers
+// ---------------------------------------------------------------------------
+async function generateAiImage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  prompt: string,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  try {
+    const { image } = await generateImage({
+      model: openai.image("gpt-image-1"),
+      prompt,
+      size: "1024x1024",
+    });
+    const bytes = image.uint8Array;
+    const mediaType = image.mediaType || "image/png";
+    const ext = mediaType.includes("png") ? "png" : "jpg";
+    const path = `${userId}/preview/${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, bytes, {
+        contentType: mediaType,
+        upsert: true,
+        cacheControl: "0",
+      });
+    if (upErr) throw new Error(upErr.message);
+    const { data: pub } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(path);
+    return { ok: true, url: `${pub.publicUrl}?v=${Date.now()}` };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unbekannter Bildfehler.";
+    const isQuota = /quota|rate.?limit|429|billing/i.test(msg);
+    return {
+      ok: false,
+      error: isQuota
+        ? "Bild konnte nicht erzeugt werden (Limit/Billing). Copy ist trotzdem fertig."
+        : `Bild konnte nicht erzeugt werden: ${msg}`,
+    };
+  }
+}
+
+async function mirrorExternalImage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  url: string,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+      headers: { Accept: "image/*" },
+    });
+    if (!res.ok) {
+      return { ok: false, error: `Bild-Fetch fehlgeschlagen (HTTP ${res.status}).` };
+    }
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) {
+      return {
+        ok: false,
+        error: `URL liefert kein Bild zurück (Content-Type: ${contentType || "leer"}).`,
+      };
+    }
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength > 10 * 1024 * 1024) {
+      return { ok: false, error: "Bild zu groß (> 10 MB)." };
+    }
+    const ext = contentType.includes("png")
+      ? "png"
+      : contentType.includes("webp")
+        ? "webp"
+        : "jpg";
+    const path = `${userId}/preview/url-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, buf, {
+        contentType,
+        upsert: true,
+        cacheControl: "0",
+      });
+    if (upErr) return { ok: false, error: `Upload-Fehler: ${upErr.message}` };
+    const { data: pub } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(path);
+    return { ok: true, url: `${pub.publicUrl}?v=${Date.now()}` };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Netzwerk-Fehler.";
+    const isTimeout = /aborted|timeout/i.test(msg);
+    return {
+      ok: false,
+      error: isTimeout
+        ? "Bild-URL-Fetch hat länger als 5 Sek. gebraucht — abgebrochen."
+        : `Bild-URL konnte nicht geladen werden: ${msg}`,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

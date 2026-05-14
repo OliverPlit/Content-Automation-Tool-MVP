@@ -10,6 +10,7 @@ import {
   type AngleValue,
   type GenerateInput,
   type GenerateState,
+  type ImageSource,
   type MachineValue,
   type SaveState,
 } from "./schema";
@@ -39,6 +40,12 @@ export default function GeneratePage() {
   const [websiteText, setWebsiteText] = useState("");
   const [crawling, setCrawling] = useState(false);
   const [crawlError, setCrawlError] = useState<string | null>(null);
+
+  // Bild-Quelle (AI / Upload / URL)
+  const [imageSource, setImageSource] = useState<ImageSource>("ai");
+  const [customImageUrl, setCustomImageUrl] = useState("");
+  const [imageSourceError, setImageSourceError] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -98,6 +105,23 @@ export default function GeneratePage() {
 
             <VariantCountField error={genState.fieldErrors?.variantCount} />
 
+            <ImageSourceField
+              source={imageSource}
+              setSource={setImageSource}
+              customImageUrl={customImageUrl}
+              setCustomImageUrl={setCustomImageUrl}
+              uploading={uploadingImage}
+              setUploading={setUploadingImage}
+              error={imageSourceError}
+              setError={setImageSourceError}
+            />
+            <input type="hidden" name="imageSource" value={imageSource} />
+            <input
+              type="hidden"
+              name="customImageUrl"
+              value={imageSource === "ai" ? "" : customImageUrl}
+            />
+
             {genState.error && !genState.fieldErrors && (
               <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
                 {genState.error}
@@ -106,17 +130,24 @@ export default function GeneratePage() {
 
             <button
               type="submit"
-              disabled={generating}
+              disabled={generating || uploadingImage}
               className="w-full rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-900/40 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+              title={uploadingImage ? "Warte bis Upload fertig ist" : undefined}
             >
               {generating
-                ? "Generiere Copy + Bild…"
+                ? imageSource === "ai"
+                  ? "Generiere Copy + Bild…"
+                  : "Generiere Copy…"
                 : genState.ok
                   ? "Erneut generieren"
-                  : "Generieren (Copy + Bild)"}
+                  : imageSource === "ai"
+                    ? "Generieren (Copy + Bild)"
+                    : "Generieren (nur Copy)"}
             </button>
             <p className="text-center text-[10px] text-slate-400">
-              ≈ 0,03 € Text + 4 ¢ Bild
+              {imageSource === "ai"
+                ? "≈ 0,03 € Text + 4 ¢ Bild"
+                : "≈ 0,03 € Text (eigenes Bild, keine Bild-Kosten)"}
             </p>
           </form>
 
@@ -320,6 +351,190 @@ function WebsiteUrlField({
         </details>
       )}
     </div>
+  );
+}
+
+function ImageSourceField({
+  source,
+  setSource,
+  customImageUrl,
+  setCustomImageUrl,
+  uploading,
+  setUploading,
+  error,
+  setError,
+}: {
+  source: ImageSource;
+  setSource: (s: ImageSource) => void;
+  customImageUrl: string;
+  setCustomImageUrl: (s: string) => void;
+  uploading: boolean;
+  setUploading: (b: boolean) => void;
+  error: string | null;
+  setError: (s: string | null) => void;
+}) {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload-preview", {
+        method: "POST",
+        body: fd,
+      });
+      const json = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !json.url) {
+        setError(json.error ?? `Upload-Fehler (${res.status})`);
+        setCustomImageUrl("");
+      } else {
+        setCustomImageUrl(json.url);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Netzwerk-Fehler.");
+      setCustomImageUrl("");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-700">
+        Bild-Quelle
+      </label>
+      <div className="mt-1 grid grid-cols-3 gap-2">
+        <SourceTile
+          active={source === "ai"}
+          onClick={() => {
+            setSource("ai");
+            setCustomImageUrl("");
+            setError(null);
+          }}
+          icon="✨"
+          label="KI generiert"
+          hint="≈ 4 ¢ / Bild"
+        />
+        <SourceTile
+          active={source === "upload"}
+          onClick={() => {
+            setSource("upload");
+            setError(null);
+          }}
+          icon="📤"
+          label="Upload"
+          hint="max 5 MB"
+        />
+        <SourceTile
+          active={source === "url"}
+          onClick={() => {
+            setSource("url");
+            setError(null);
+          }}
+          icon="🔗"
+          label="Bild-URL"
+          hint="jpg/png/webp"
+        />
+      </div>
+
+      {source === "upload" && (
+        <div className="mt-3">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleFileChange}
+            disabled={uploading}
+            className="block w-full text-xs text-slate-700 file:mr-2 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-800 hover:file:bg-blue-100 disabled:opacity-60"
+          />
+          {uploading && (
+            <p className="mt-1 text-xs text-blue-700">⏳ Lädt hoch…</p>
+          )}
+          {!uploading && customImageUrl && (
+            <div className="mt-2 flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={customImageUrl}
+                alt="Upload-Preview"
+                className="h-16 w-16 rounded-md border border-emerald-300 object-cover"
+              />
+              <span className="text-xs text-emerald-700">
+                ✓ Hochgeladen — wird beim Generieren verwendet.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {source === "url" && (
+        <div className="mt-3">
+          <input
+            type="url"
+            value={customImageUrl}
+            onChange={(e) => setCustomImageUrl(e.target.value)}
+            placeholder="https://example.com/image.jpg"
+            className={inputCls}
+          />
+          {customImageUrl && /^https?:\/\//i.test(customImageUrl) && (
+            <div className="mt-2 flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={customImageUrl}
+                alt="URL-Preview"
+                className="h-16 w-16 rounded-md border border-emerald-300 object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+              <span className="text-xs text-slate-500">
+                Vorschau (falls die URL erreichbar ist).
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+function SourceTile({
+  active,
+  onClick,
+  icon,
+  label,
+  hint,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: string;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "flex flex-col items-center justify-center rounded-lg border px-2 py-3 text-center transition-all duration-150 " +
+        (active
+          ? "border-blue-700 bg-gradient-to-br from-blue-50 to-white shadow-md shadow-blue-900/10 ring-1 ring-blue-300"
+          : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40")
+      }
+    >
+      <span className="text-xl">{icon}</span>
+      <span
+        className={
+          "mt-1 text-xs font-semibold " +
+          (active ? "text-blue-900" : "text-slate-700")
+        }
+      >
+        {label}
+      </span>
+      <span className="mt-0.5 text-[10px] text-slate-500">{hint}</span>
+    </button>
   );
 }
 

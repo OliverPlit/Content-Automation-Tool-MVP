@@ -146,6 +146,9 @@ export type AdVariant = z.infer<typeof adVariantSchema>;
 // ---------------------------------------------------------------------------
 // State-Typen
 // ---------------------------------------------------------------------------
+export const IMAGE_SOURCES = ["ai", "upload", "url"] as const;
+export type ImageSource = (typeof IMAGE_SOURCES)[number];
+
 export type GenerateInput = {
   product: string;
   audience: string;
@@ -154,6 +157,8 @@ export type GenerateInput = {
   angle: AngleValue;
   websiteText?: string;
   variantCount: number;
+  imageSource: ImageSource;
+  customImageUrl?: string;
 };
 
 export type GenerateState = {
