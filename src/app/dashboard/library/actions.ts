@@ -13,6 +13,9 @@ export type UpdateState = {
   message?: string;
 };
 
+// Bewusst etwas großzügigere Limits als adCopySchema, damit auch Legacy-Rows
+// editiert werden können (vor dem MACHINES/ANGLES-Refactor waren die Felder
+// länger). Beim Schreiben validiert writeAdCopy mit dem aktuellen Schema.
 const updateAllSchema = z.object({
   id: z.string().uuid(),
   headline: z.string().min(1).max(120),
@@ -22,7 +25,7 @@ const updateAllSchema = z.object({
       body: z.string().min(1).max(600),
       cta: z.string().min(1).max(60),
     }),
-  ).length(5),
+  ).min(1).max(10),
 });
 
 const headerSchema = z.object({
@@ -33,7 +36,7 @@ const headerSchema = z.object({
 
 const variantSchema = z.object({
   id: z.string().uuid(),
-  variantIndex: z.number().int().min(0).max(4),
+  variantIndex: z.number().int().min(0).max(9),
   body: z.string().min(1).max(600),
   cta: z.string().min(1).max(60),
 });
@@ -101,8 +104,18 @@ export async function updateCreative(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Nicht eingeloggt." };
+
   const { id: cid, ...output } = parsed.data;
-  const result = await writeAdCopy(supabase, cid, output);
+  // Bestehenden Output laden, um imagePrompt nicht zu verlieren.
+  const current = await loadAdCopy(supabase, cid);
+  if (!current.ok) return { ok: false, error: current.error };
+
+  const result = await writeAdCopy(supabase, cid, {
+    ...current.output,
+    headline: output.headline,
+    subline: output.subline,
+    variants: output.variants,
+  });
   return result.ok
     ? { ok: true, message: "Änderungen gespeichert." }
     : { ok: false, error: result.error };
