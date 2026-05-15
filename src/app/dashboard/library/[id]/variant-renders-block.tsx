@@ -72,6 +72,7 @@ export function VariantRendersBlock({
               templateDescription={tpl.description}
               hasTemplateId={templateAvailability[kind]}
               outputExt={tpl.outputExt}
+              aspectRatio={tpl.aspectRatio}
               record={record}
               disabled={!hasImage}
               startAction={formAction}
@@ -91,6 +92,7 @@ function RenderSlot({
   templateDescription,
   hasTemplateId,
   outputExt,
+  aspectRatio,
   record,
   disabled,
   startAction,
@@ -102,10 +104,21 @@ function RenderSlot({
   templateDescription: string;
   hasTemplateId: boolean;
   outputExt: "jpg" | "png" | "mp4";
+  aspectRatio: string;
   record: RenderRecord | null;
   disabled: boolean;
   startAction: (formData: FormData) => void;
 }) {
+  // Tailwind kann arbitrary aspect-ratios via "aspect-[w/h]" rendern.
+  // Wir mappen die Template-Definition auf eine konkrete CSS-Klasse.
+  const aspectClass =
+    aspectRatio === "9:16"
+      ? "aspect-[9/16]"
+      : aspectRatio === "16:9"
+        ? "aspect-[16/9]"
+        : aspectRatio === "4:5"
+          ? "aspect-[4/5]"
+          : "aspect-square";
   const [override, setOverride] = useState<{
     forId: string;
     status: RenderRecord["status"];
@@ -205,14 +218,14 @@ function RenderSlot({
                 src={liveUrl}
                 controls
                 playsInline
-                className="aspect-square w-full rounded-md border border-slate-200 bg-white object-contain"
+                className={`${aspectClass} mx-auto w-full max-w-[260px] rounded-md border border-slate-200 bg-black object-contain`}
               />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={liveUrl}
                 alt={`${templateLabel} Render`}
-                className="aspect-square w-full rounded-md border border-slate-200 object-cover"
+                className={`${aspectClass} mx-auto w-full max-w-[260px] rounded-md border border-slate-200 object-cover`}
               />
             )}
             <div className="flex flex-wrap gap-2">
