@@ -297,6 +297,21 @@ function inferExt(mediaType: string): string {
   return mediaType.split("/")[1] ?? "png";
 }
 
+// Übersetzt Postgres-/Supabase-Fehler in handlungsorientierte Hinweise.
+function friendlyDbError(message: string): string {
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("product_image_url") &&
+    (lower.includes("does not exist") || lower.includes("could not find") || lower.includes("schema cache"))
+  ) {
+    return `Migration fehlt: Bitte im Supabase SQL Editor ausführen:\n\nalter table public.creative_images add column if not exists product_image_url text;`;
+  }
+  if (lower.includes("violates row-level security")) {
+    return `Berechtigungsfehler (RLS) — sind die creative_images-Policies aktiv? Original: ${message}`;
+  }
+  return `DB-Fehler: ${message}`;
+}
+
 // ---------------------------------------------------------------------------
 // Produkt-Bild — separates Bild pro Variante (z. B. WODOIL-Kanister auf Szene)
 // ---------------------------------------------------------------------------
@@ -369,8 +384,9 @@ export async function setProductImage(
       .from("creative_images")
       .update({ product_image_url: publicUrl })
       .eq("id", existing.id);
-    if (updateErr)
-      return { ok: false, error: `DB-Update fehlgeschlagen: ${updateErr.message}` };
+    if (updateErr) {
+      return { ok: false, error: friendlyDbError(updateErr.message) };
+    }
   } else {
     // Kein Haupt-Bild vorhanden: lege Pseudo-Row an, image_url leer ist nicht
     // erlaubt → nutze die Produktbild-URL als Platzhalter, das echte Bild
@@ -384,8 +400,9 @@ export async function setProductImage(
         image_url: publicUrl,
         product_image_url: publicUrl,
       });
-    if (insertErr)
-      return { ok: false, error: `DB-Insert fehlgeschlagen: ${insertErr.message}` };
+    if (insertErr) {
+      return { ok: false, error: friendlyDbError(insertErr.message) };
+    }
   }
 
   revalidatePath("/dashboard/library");
