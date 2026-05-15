@@ -333,6 +333,8 @@ function ProductImageSubBlock({
   const [customUrl, setCustomUrl] = useState("");
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [bgRemove, setBgRemove] = useState(true);
+  const [bgStage, setBgStage] = useState<string | null>(null);
 
   // Live-Wert: bei erfolgreicher Action das neue Bild, sonst das gespeicherte.
   const liveUrl: string | null =
@@ -346,8 +348,34 @@ function ProductImageSubBlock({
     setUploadErr(null);
     setUploading(true);
     try {
+      let bytesToUpload: Blob = file;
+      let uploadName = file.name;
+
+      // Optional: Hintergrund client-seitig via @imgly/background-removal entfernen.
+      // Lädt beim ersten Aufruf ~40 MB Modelle; bleibt dann gecached im Browser.
+      if (bgRemove) {
+        setBgStage("Lade KI-Modell (einmalig ~40 MB)…");
+        const mod = await import("@imgly/background-removal");
+        setBgStage("Entferne Hintergrund…");
+        const cleaned = await mod.removeBackground(file, {
+          output: { format: "image/png", quality: 0.9 },
+          progress: (key, current, total) => {
+            // imgly streamt Lade-Progress hier durch, "fetch:" + Pfad.
+            if (key.startsWith("fetch:") && total) {
+              const pct = Math.round((current / total) * 100);
+              setBgStage(`Lade Modell… ${pct}%`);
+            } else if (key === "compute:inference") {
+              setBgStage("Entferne Hintergrund…");
+            }
+          },
+        });
+        bytesToUpload = cleaned;
+        uploadName = file.name.replace(/\.[^.]+$/, "") + "-nobg.png";
+        setBgStage(null);
+      }
+
       const fd = new FormData();
-      fd.append("file", file);
+      fd.append("file", new File([bytesToUpload], uploadName, { type: "image/png" }));
       const res = await fetch("/api/upload-preview", { method: "POST", body: fd });
       const json = (await res.json()) as { url?: string; error?: string };
       if (!res.ok || !json.url) {
@@ -357,10 +385,15 @@ function ProductImageSubBlock({
         setCustomUrl(json.url);
       }
     } catch (err) {
-      setUploadErr(err instanceof Error ? err.message : "Netzwerk-Fehler.");
+      setUploadErr(
+        err instanceof Error
+          ? `${err.message}${bgRemove ? " (Hintergrund-Entfernung deaktivieren als Workaround)" : ""}`
+          : "Netzwerk-Fehler.",
+      );
       setCustomUrl("");
     } finally {
       setUploading(false);
+      setBgStage(null);
     }
   };
 
@@ -416,7 +449,20 @@ function ProductImageSubBlock({
           </div>
 
           {source === "upload" ? (
-            <div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-xs text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={bgRemove}
+                  onChange={(e) => setBgRemove(e.target.checked)}
+                  disabled={uploading || pending}
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-blue-700 focus:ring-blue-700 disabled:opacity-60"
+                />
+                <span>
+                  🪄 Hintergrund automatisch entfernen{" "}
+                  <span className="text-slate-400">(empfohlen für Produktbilder)</span>
+                </span>
+              </label>
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
@@ -425,10 +471,15 @@ function ProductImageSubBlock({
                 className="block w-full text-xs text-slate-700 file:mr-2 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-800 hover:file:bg-blue-100 disabled:opacity-60"
               />
               {uploading && (
-                <p className="mt-1 text-xs text-blue-700">⏳ Lädt hoch…</p>
+                <p className="text-xs text-blue-700">
+                  ⏳ {bgStage ?? "Lädt hoch…"}
+                </p>
               )}
               {!uploading && customUrl && (
-                <p className="mt-1 text-xs text-emerald-700">✓ Bereit zum Speichern</p>
+                <p className="text-xs text-emerald-700">
+                  ✓ Bereit zum Speichern
+                  {bgRemove ? " (mit transparentem Hintergrund)" : ""}
+                </p>
               )}
             </div>
           ) : (
