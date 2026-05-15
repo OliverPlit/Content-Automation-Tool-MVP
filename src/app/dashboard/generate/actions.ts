@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   ANGLES,
   IMAGE_SOURCES,
+  IMAGE_STYLES,
   MACHINES,
   TONES,
   adCopySchema,
@@ -17,6 +18,7 @@ import {
   type GeneratedVariant,
   type GenerateInput,
   type GenerateState,
+  type ImageStyleValue,
   type MachineValue,
   type SaveState,
 } from "./schema";
@@ -41,6 +43,9 @@ const inputSchema = z.object({
   variantCount: z.coerce.number().int().min(1).max(10).default(3),
   imageSource: z.enum(IMAGE_SOURCES).default("ai"),
   customImageUrl: z.string().url().optional().or(z.literal("")),
+  imageStyle: z
+    .enum(IMAGE_STYLES.map((s) => s.value) as [ImageStyleValue, ...ImageStyleValue[]])
+    .default("auto"),
 });
 
 function buildSystemPrompt(
@@ -49,9 +54,14 @@ function buildSystemPrompt(
   websiteText: string | undefined,
   variantNumber: number,
   variantTotal: number,
+  imageStyle: ImageStyleValue,
 ): string {
   const machineMeta = MACHINES.find((m) => m.value === machine)!;
   const angleMeta = ANGLES.find((a) => a.value === angle)!;
+  const styleMeta = IMAGE_STYLES.find((s) => s.value === imageStyle)!;
+  const styleLine = styleMeta.promptSuffix
+    ? `\n- Pflicht-Style-Suffix: "${styleMeta.promptSuffix}"`
+    : "";
 
   const websiteSection = websiteText
     ? `\nZUSATZ-KONTEXT VON DER KUNDEN-WEBSITE (gekürzt, nicht 1:1 zitieren):\n${websiteText.slice(0, 3000)}\n`
@@ -86,7 +96,7 @@ LÄNGEN-VORGABEN (HART):
 - imagePrompt: ENGLISCH, max 800 Zeichen.
   Pflicht-Elemente:
    - Szene: ${machineMeta.sceneHint}
-   - "professional product photography, realistic, dramatic natural lighting, 1:1 square composition"
+   - Stil-Basis: "professional product photography, realistic, dramatic natural lighting, 1:1 square composition"${styleLine}
    - Pflicht-Suffix: "no text, no logos, no watermarks, no readable signage"
   Kein Brand-Name (kein "WODOIL"), nur generisches "yellow lubricant canister / oil drum".
 
@@ -108,6 +118,7 @@ async function generateOneVariant(args: {
   angle: AngleValue;
   websiteText: string | undefined;
   imageSource: "ai" | "upload" | "url";
+  imageStyle: ImageStyleValue;
   sharedImageUrl: string | undefined; // bei upload/url für alle gleich
 }): Promise<GeneratedVariant> {
   const {
@@ -122,6 +133,7 @@ async function generateOneVariant(args: {
     angle,
     websiteText,
     imageSource,
+    imageStyle,
     sharedImageUrl,
   } = args;
 
@@ -132,6 +144,7 @@ async function generateOneVariant(args: {
     websiteText,
     variantNumber,
     variantTotal,
+    imageStyle,
   );
   const userPrompt = `Produkt / Service: ${product}
 Zielgruppe: ${audience}
@@ -187,6 +200,7 @@ export async function generateAdCopy(
     variantCount: formData.get("variantCount") ?? "3",
     imageSource: formData.get("imageSource") ?? "ai",
     customImageUrl: formData.get("customImageUrl") ?? "",
+    imageStyle: formData.get("imageStyle") ?? "auto",
   });
 
   if (!parsed.success) {
@@ -228,6 +242,7 @@ export async function generateAdCopy(
     variantCount,
     imageSource,
     customImageUrl,
+    imageStyle,
   } = parsed.data;
 
   const cleanedCustomUrl =
@@ -269,6 +284,7 @@ export async function generateAdCopy(
         angle,
         websiteText: cleanedWebsite,
         imageSource,
+        imageStyle,
         sharedImageUrl,
       }),
     ),
@@ -302,6 +318,7 @@ export async function generateAdCopy(
     variantCount,
     imageSource,
     customImageUrl: cleanedCustomUrl,
+    imageStyle,
   };
 
   return {

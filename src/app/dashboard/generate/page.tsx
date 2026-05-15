@@ -1,17 +1,21 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { generateAdCopy, saveCreative } from "./actions";
 import {
   ANGLES,
+  IMAGE_STYLES,
   MACHINES,
   type AngleValue,
   type GeneratedVariant,
   type GenerateInput,
   type GenerateState,
   type ImageSource,
+  type ImageStyleValue,
   type MachineValue,
+  type PromptTemplateData,
   type SaveState,
 } from "./schema";
 
@@ -43,6 +47,54 @@ export default function GeneratePage() {
   const [imageSourceError, setImageSourceError] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  // Template-Loader (?template=<id>)
+  const searchParams = useSearchParams();
+  const templateId = searchParams.get("template");
+  const [loadedTemplate, setLoadedTemplate] = useState<{
+    id: string;
+    name: string;
+    data: PromptTemplateData;
+  } | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(false);
+
+  useEffect(() => {
+    if (!templateId) return;
+    // Diese Effekt-State-Updates sind legitime "Daten aus Fetch in lokalen
+    // State spiegeln"-Aufrufe — die React-19-Lint-Regel ist hier zu streng.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setTemplateLoading(true);
+    setTemplateError(null);
+    fetch(`/api/templates/${templateId}`, { cache: "no-store" })
+      .then(async (res) => {
+        const json = (await res.json()) as {
+          id?: string;
+          name?: string;
+          data?: PromptTemplateData;
+          error?: string;
+        };
+        if (!res.ok || !json.id || !json.name) {
+          setTemplateError(json.error ?? `Fehler ${res.status}`);
+          setLoadedTemplate(null);
+        } else {
+          setLoadedTemplate({
+            id: json.id,
+            name: json.name,
+            data: json.data ?? {},
+          });
+        }
+      })
+      .catch((err) => {
+        setTemplateError(err instanceof Error ? err.message : "Netzwerk-Fehler.");
+      })
+      .finally(() => setTemplateLoading(false));
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [templateId]);
+
+  // Wenn ein Template geladen ist, übernehmen wir auch den ImageStyle.
+  const formKey = loadedTemplate?.id ?? "default";
+  const tplData = loadedTemplate?.data;
+
   return (
     <div className="mx-auto max-w-7xl">
       <header className="mb-6">
@@ -55,10 +107,36 @@ export default function GeneratePage() {
         </p>
       </header>
 
+      {loadedTemplate && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
+          <p className="text-blue-900">
+            📋 Vorlage <strong>{loadedTemplate.name}</strong> geladen — Form ist
+            vorausgefüllt. Du kannst alles noch anpassen vor dem Generieren.
+          </p>
+          <a
+            href="/dashboard/generate"
+            className="text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline"
+          >
+            Ohne Vorlage starten
+          </a>
+        </div>
+      )}
+      {templateLoading && (
+        <div className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          ⏳ Lade Vorlage…
+        </div>
+      )}
+      {templateError && (
+        <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+          Vorlage konnte nicht geladen werden: {templateError}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[360px_1fr]">
         {/* --------- Left column: sticky form --------- */}
         <aside className="md:sticky md:top-6 md:self-start">
           <form
+            key={formKey}
             action={generateAction}
             className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-blue-900/5"
           >
@@ -68,6 +146,7 @@ export default function GeneratePage() {
                 rows={3}
                 required
                 maxLength={500}
+                defaultValue={tplData?.product ?? ""}
                 placeholder="z.B. WODOIL Hydrauliköl HLP 46, 200-Liter-Fass"
               />
             </Field>
@@ -78,13 +157,20 @@ export default function GeneratePage() {
                 type="text"
                 required
                 maxLength={300}
+                defaultValue={tplData?.audience ?? ""}
                 placeholder="z.B. Landwirte mit eigener Werkstatt"
               />
             </Field>
 
-            <MachineField error={genState.fieldErrors?.machine} />
-            <AngleField error={genState.fieldErrors?.angle} />
-            <ToneField />
+            <MachineField
+              error={genState.fieldErrors?.machine}
+              initialValue={tplData?.machine as MachineValue | undefined}
+            />
+            <AngleField
+              error={genState.fieldErrors?.angle}
+              initialValue={tplData?.angle as AngleValue | undefined}
+            />
+            <ToneField initialValue={tplData?.tone} />
 
             <WebsiteUrlField
               websiteText={websiteText}
@@ -96,7 +182,12 @@ export default function GeneratePage() {
             />
             <input type="hidden" name="websiteText" value={websiteText} />
 
-            <VariantCountField error={genState.fieldErrors?.variantCount} />
+            <VariantCountField
+              error={genState.fieldErrors?.variantCount}
+              initialValue={tplData?.variantCount}
+            />
+
+            <ImageStyleField initialValue={tplData?.imageStyle as ImageStyleValue | undefined} />
 
             <ImageSourceField
               source={imageSource}
@@ -473,8 +564,14 @@ ${v.imagePrompt}
 // ===========================================================================
 // Form-Komponenten (unverändert vom vorigen Stand)
 // ===========================================================================
-function ToneField() {
-  const [tone, setTone] = useState<(typeof TONES)[number]["value"]>("professionell");
+function ToneField({
+  initialValue,
+}: {
+  initialValue?: (typeof TONES)[number]["value"];
+}) {
+  const [tone, setTone] = useState<(typeof TONES)[number]["value"]>(
+    initialValue ?? "professionell",
+  );
   const active = TONES.find((t) => t.value === tone)!;
   return (
     <div>
@@ -500,8 +597,18 @@ function ToneField() {
   );
 }
 
-function MachineField({ error }: { error?: string }) {
-  const [val, setVal] = useState<MachineValue>(MACHINES[0].value);
+function MachineField({
+  error,
+  initialValue,
+}: {
+  error?: string;
+  initialValue?: MachineValue;
+}) {
+  const [val, setVal] = useState<MachineValue>(
+    initialValue && MACHINES.some((m) => m.value === initialValue)
+      ? initialValue
+      : MACHINES[0].value,
+  );
   return (
     <div>
       <label className="block text-sm font-medium text-slate-700">
@@ -528,8 +635,18 @@ function MachineField({ error }: { error?: string }) {
   );
 }
 
-function AngleField({ error }: { error?: string }) {
-  const [val, setVal] = useState<AngleValue>(ANGLES[0].value);
+function AngleField({
+  error,
+  initialValue,
+}: {
+  error?: string;
+  initialValue?: AngleValue;
+}) {
+  const [val, setVal] = useState<AngleValue>(
+    initialValue && ANGLES.some((a) => a.value === initialValue)
+      ? initialValue
+      : ANGLES[0].value,
+  );
   const active = ANGLES.find((a) => a.value === val)!;
   return (
     <div>
@@ -633,8 +750,16 @@ function WebsiteUrlField({
   );
 }
 
-function VariantCountField({ error }: { error?: string }) {
-  const [count, setCount] = useState(3);
+function VariantCountField({
+  error,
+  initialValue,
+}: {
+  error?: string;
+  initialValue?: number;
+}) {
+  const [count, setCount] = useState(
+    initialValue && initialValue >= 1 && initialValue <= 10 ? initialValue : 3,
+  );
   const PRESETS = [1, 3, 5, 10];
   return (
     <div>
@@ -682,6 +807,40 @@ function VariantCountField({ error }: { error?: string }) {
         Default: 3. Jede Variante = 1 API-Call parallel.
       </p>
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+function ImageStyleField({
+  initialValue,
+}: {
+  initialValue?: ImageStyleValue;
+}) {
+  const [val, setVal] = useState<ImageStyleValue>(
+    initialValue && IMAGE_STYLES.some((s) => s.value === initialValue)
+      ? initialValue
+      : "auto",
+  );
+  const active = IMAGE_STYLES.find((s) => s.value === val)!;
+  return (
+    <div>
+      <label className="block text-sm font-medium text-slate-700">
+        Bild-Stil
+      </label>
+      <select
+        name="imageStyle"
+        required
+        value={val}
+        onChange={(e) => setVal(e.target.value as ImageStyleValue)}
+        className={`${inputCls} mt-1`}
+      >
+        {IMAGE_STYLES.map((s) => (
+          <option key={s.value} value={s.value}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1 text-xs text-slate-500">{active.hint}</p>
     </div>
   );
 }
@@ -921,9 +1080,12 @@ function Field({
 
 function CharCountTextarea({
   maxLength,
+  defaultValue,
   ...rest
 }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { maxLength: number }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(
+    typeof defaultValue === "string" ? defaultValue : "",
+  );
   return (
     <div className="relative">
       <textarea
@@ -947,9 +1109,12 @@ function CharCountTextarea({
 
 function CharCountInput({
   maxLength,
+  defaultValue,
   ...rest
 }: React.InputHTMLAttributes<HTMLInputElement> & { maxLength: number }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(
+    typeof defaultValue === "string" ? defaultValue : "",
+  );
   return (
     <div className="relative">
       <input

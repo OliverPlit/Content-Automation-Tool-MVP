@@ -165,6 +165,56 @@ export type AdVariant = z.infer<typeof adVariantSchema>;
 export const IMAGE_SOURCES = ["ai", "upload", "url"] as const;
 export type ImageSource = (typeof IMAGE_SOURCES)[number];
 
+// ---------------------------------------------------------------------------
+// Bild-Stil-Presets — werden als Suffix an den AI-Image-Prompt angehängt,
+// damit User ohne Prompt-Engineering einen konsistenten Look bekommt.
+// ---------------------------------------------------------------------------
+export const IMAGE_STYLES = [
+  {
+    value: "auto",
+    label: "🎲 Auto (passt zum Kontext)",
+    promptSuffix: "",
+    hint: "Lässt das Modell selbst entscheiden, was zur Maschine passt.",
+  },
+  {
+    value: "cinematic",
+    label: "🎬 Cinematic",
+    promptSuffix:
+      "dramatic film lighting, anamorphic lens, deep shadows, cinematic composition, color graded look",
+    hint: "Kino-Look — dramatische Schatten, filmische Stimmung.",
+  },
+  {
+    value: "studio",
+    label: "📸 Studio Product",
+    promptSuffix:
+      "professional studio lighting, clean seamless background, sharp focus, premium advertising photography",
+    hint: "Studio-Setting — sauberer Hintergrund, scharfer Fokus.",
+  },
+  {
+    value: "golden_hour",
+    label: "🌅 Golden Hour",
+    promptSuffix:
+      "warm golden hour sunset lighting, long soft shadows, atmospheric mood, lens flare",
+    hint: "Warmes Abendlicht — emotional, hochwertig.",
+  },
+  {
+    value: "industrial",
+    label: "🔧 Industrial Gritty",
+    promptSuffix:
+      "raw industrial setting, metal textures, dramatic contrast, gritty atmosphere, hard light",
+    hint: "Roh-industriell — Werkstatt-Feeling, harter Kontrast.",
+  },
+  {
+    value: "lifestyle",
+    label: "🌿 Lifestyle Natural",
+    promptSuffix:
+      "outdoor lifestyle scene, natural daylight, authentic candid feel, shallow depth of field",
+    hint: "Authentischer Outdoor-Look — natürliches Licht, lebensnah.",
+  },
+] as const;
+
+export type ImageStyleValue = (typeof IMAGE_STYLES)[number]["value"];
+
 export type GenerateInput = {
   product: string;
   audience: string;
@@ -175,6 +225,7 @@ export type GenerateInput = {
   variantCount: number;
   imageSource: ImageSource;
   customImageUrl?: string;
+  imageStyle: ImageStyleValue;
 };
 
 export type GenerateState = {
@@ -194,6 +245,21 @@ export type GenerateState = {
   variants?: GeneratedVariant[]; // jede Variante = eigenständiges Creative
   input?: GenerateInput;
 };
+
+// ---------------------------------------------------------------------------
+// Prompt-Template-Daten (zum Vorausfüllen des Generate-Forms)
+// ---------------------------------------------------------------------------
+export const promptTemplateDataSchema = z.object({
+  product: z.string().max(500).optional().or(z.literal("")),
+  audience: z.string().max(300).optional().or(z.literal("")),
+  tone: z.enum(TONES).optional(),
+  machine: z.string().max(40).optional().or(z.literal("")),
+  angle: z.string().max(40).optional().or(z.literal("")),
+  variantCount: z.coerce.number().int().min(1).max(10).optional(),
+  imageStyle: z.string().max(40).optional().or(z.literal("")),
+});
+
+export type PromptTemplateData = z.infer<typeof promptTemplateDataSchema>;
 
 export type SaveState = {
   ok: boolean;
