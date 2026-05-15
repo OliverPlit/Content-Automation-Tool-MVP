@@ -121,10 +121,12 @@ export async function startRender(
 
   // Cache-Buster aus Supabase-URL für Creatomate entfernen, damit der
   // Downloader auf deren Seite den Fetch sauber cached.
-  const imageUrlClean = imageRow.image_url.split("?")[0];
-  const productImageUrl = imageRow.product_image_url
-    ? (imageRow.product_image_url as string).split("?")[0]
-    : null;
+  // WICHTIG: Cache-Buster (?v=...) bleibt drin — sonst sieht Creatomate
+  // immer dieselbe URL und liefert das alte gecachte Bild aus, auch wenn wir
+  // im Supabase-Storage neue Bytes drüber-uploaded haben. Mit Cache-Buster
+  // ändert sich die URL bei jedem Upload → Creatomate fetcht frisch.
+  const imageUrlClean = imageRow.image_url as string;
+  const productImageUrl = (imageRow.product_image_url as string | null) ?? null;
 
   // 2) DB-Eintrag mit Status "processing" (oder upsert, falls erneut gerendert)
   const { data: renderRow, error: insertErr } = await supabase
