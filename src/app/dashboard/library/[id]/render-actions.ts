@@ -92,7 +92,7 @@ export async function startRender(
         .single(),
       supabase
         .from("creative_images")
-        .select("image_url")
+        .select("image_url, product_image_url")
         .eq("creative_id", creativeId)
         .eq("variant_index", variantIndex)
         .maybeSingle(),
@@ -122,6 +122,9 @@ export async function startRender(
   // Cache-Buster aus Supabase-URL für Creatomate entfernen, damit der
   // Downloader auf deren Seite den Fetch sauber cached.
   const imageUrlClean = imageRow.image_url.split("?")[0];
+  const productImageUrl = imageRow.product_image_url
+    ? (imageRow.product_image_url as string).split("?")[0]
+    : null;
 
   // 2) DB-Eintrag mit Status "processing" (oder upsert, falls erneut gerendert)
   const { data: renderRow, error: insertErr } = await supabase
@@ -145,28 +148,38 @@ export async function startRender(
   // ("Background"/"Image-URL" for images, "CTA-Box"/"Accent-Color" for the
   // accent box). Creatomate silently ignores keys that don't match a real
   // element/property, so over-sending is safe.
-  const body = {
-    template_id: templateId,
-    modifications: {
-      // Text
-      "Headline": adCopy.headline,
-      "Headline.text": adCopy.headline,
-      "Subline": adCopy.subline,
-      "Subline.text": adCopy.subline,
-      "CTA": variant.cta,
-      "CTA.text": variant.cta,
-      // Image source
-      "Background": imageUrlClean,
-      "Background.source": imageUrlClean,
-      "Image-URL": imageUrlClean,
-      "Image-URL.source": imageUrlClean,
-      // Accent color
-      "CTA-Box": ACCENT_COLOR_DEFAULT,
-      "CTA-Box.fill_color": ACCENT_COLOR_DEFAULT,
-      "Accent-Color": ACCENT_COLOR_DEFAULT,
-      "Accent-Color.fill_color": ACCENT_COLOR_DEFAULT,
-    },
+  const modifications: Record<string, string> = {
+    // Text
+    Headline: adCopy.headline,
+    "Headline.text": adCopy.headline,
+    Subline: adCopy.subline,
+    "Subline.text": adCopy.subline,
+    CTA: variant.cta,
+    "CTA.text": variant.cta,
+    // Background image
+    Background: imageUrlClean,
+    "Background.source": imageUrlClean,
+    "Image-URL": imageUrlClean,
+    "Image-URL.source": imageUrlClean,
+    // Accent color
+    "CTA-Box": ACCENT_COLOR_DEFAULT,
+    "CTA-Box.fill_color": ACCENT_COLOR_DEFAULT,
+    "Accent-Color": ACCENT_COLOR_DEFAULT,
+    "Accent-Color.fill_color": ACCENT_COLOR_DEFAULT,
   };
+
+  // Optionales Produktbild — wird im Template als Overlay über Background gelegt.
+  // Mehrere Naming-Konventionen, damit verschiedene Templates funktionieren.
+  if (productImageUrl) {
+    modifications["ProductImage"] = productImageUrl;
+    modifications["ProductImage.source"] = productImageUrl;
+    modifications["Product"] = productImageUrl;
+    modifications["Product.source"] = productImageUrl;
+    modifications["Product-Image"] = productImageUrl;
+    modifications["Product-Image.source"] = productImageUrl;
+  }
+
+  const body = { template_id: templateId, modifications };
 
   try {
     const res = await fetch(`${CREATOMATE_API_BASE}/renders`, {

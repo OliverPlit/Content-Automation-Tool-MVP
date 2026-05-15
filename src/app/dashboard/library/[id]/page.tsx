@@ -31,7 +31,7 @@ export default async function CreativeDetailPage({ params }: { params: Params })
       .single(),
     supabase
       .from("creative_images")
-      .select("variant_index, image_url, image_prompt, provider")
+      .select("variant_index, image_url, image_prompt, provider, product_image_url")
       .eq("creative_id", id),
     supabase
       .from("creative_renders")
@@ -61,6 +61,7 @@ export default async function CreativeDetailPage({ params }: { params: Params })
     imageUrl: r.image_url as string,
     imagePrompt: (r.image_prompt as string | null) ?? null,
     provider: (r.provider as ImageProvider | null) ?? null,
+    productImageUrl: (r.product_image_url as string | null) ?? null,
   }));
 
   const seenRender = new Set<string>();

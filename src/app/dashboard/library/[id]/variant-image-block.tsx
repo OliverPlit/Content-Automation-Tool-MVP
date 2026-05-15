@@ -5,14 +5,19 @@ import { useActionState, useState } from "react";
 import {
   type ImageProvider,
   type ImageState,
+  type ProductImageState,
   type VariantImage,
   deleteCreativeImage,
+  deleteProductImage,
   generateCreativeImage,
+  setProductImage,
 } from "./image-actions";
 
 const initial: ImageState = { ok: false };
+const initialProduct: ProductImageState = { ok: false };
 
 type SourceMode = "ai" | "upload" | "url";
+type ProductSourceMode = "upload" | "url";
 
 const PROVIDERS: { value: ImageProvider; label: string; hint: string }[] = [
   {
@@ -84,6 +89,7 @@ export function VariantImageBlock({
           imageUrl: state.imageUrl,
           imagePrompt: state.imagePrompt ?? null,
           provider: state.provider ?? null,
+          productImageUrl: image?.productImageUrl ?? null,
         }
       : image;
 
@@ -296,7 +302,219 @@ export function VariantImageBlock({
           </div>
         </div>
       </div>
+
+      {/* ---------- Produktbild (separates Overlay-Bild für Creatomate) ---------- */}
+      <ProductImageSubBlock
+        creativeId={creativeId}
+        variantIndex={variantIndex}
+        current={image?.productImageUrl ?? null}
+      />
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ProductImageSubBlock
+// ---------------------------------------------------------------------------
+function ProductImageSubBlock({
+  creativeId,
+  variantIndex,
+  current,
+}: {
+  creativeId: string;
+  variantIndex: number;
+  current: string | null;
+}) {
+  const [state, formAction, pending] = useActionState(
+    setProductImage,
+    initialProduct,
+  );
+  const [source, setSource] = useState<ProductSourceMode>("upload");
+  const [customUrl, setCustomUrl] = useState("");
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Live-Wert: bei erfolgreicher Action das neue Bild, sonst das gespeicherte.
+  const liveUrl: string | null =
+    state.ok && state.productImageUrl !== undefined && state.variantIndex === variantIndex
+      ? state.productImageUrl
+      : current;
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadErr(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload-preview", { method: "POST", body: fd });
+      const json = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !json.url) {
+        setUploadErr(json.error ?? `Upload-Fehler (${res.status})`);
+        setCustomUrl("");
+      } else {
+        setCustomUrl(json.url);
+      }
+    } catch (err) {
+      setUploadErr(err instanceof Error ? err.message : "Netzwerk-Fehler.");
+      setCustomUrl("");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const submitDisabled = pending || uploading || !customUrl;
+
+  return (
+    <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-900">
+          Produktbild <span className="font-normal text-slate-500">(optional)</span>
+        </h3>
+        <span className="text-[10px] text-slate-500">
+          Wird im Creatomate-Template als Overlay über dem Hintergrund eingefügt
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-[140px_1fr]">
+        <div>
+          {liveUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={liveUrl}
+              alt={`Produktbild Variante ${variantIndex + 1}`}
+              className="aspect-square w-full rounded-md border border-slate-200 bg-white object-contain p-2 shadow-sm"
+            />
+          ) : (
+            <div className="flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-white text-xs text-slate-400">
+              kein Produktbild
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-2">
+            <TinyTile
+              active={source === "upload"}
+              onClick={() => {
+                setSource("upload");
+                setUploadErr(null);
+              }}
+              icon="📤"
+              label="Upload"
+            />
+            <TinyTile
+              active={source === "url"}
+              onClick={() => {
+                setSource("url");
+                setUploadErr(null);
+              }}
+              icon="🔗"
+              label="Bild-URL"
+            />
+          </div>
+
+          {source === "upload" ? (
+            <div>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFile}
+                disabled={uploading || pending}
+                className="block w-full text-xs text-slate-700 file:mr-2 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-800 hover:file:bg-blue-100 disabled:opacity-60"
+              />
+              {uploading && (
+                <p className="mt-1 text-xs text-blue-700">⏳ Lädt hoch…</p>
+              )}
+              {!uploading && customUrl && (
+                <p className="mt-1 text-xs text-emerald-700">✓ Bereit zum Speichern</p>
+              )}
+            </div>
+          ) : (
+            <input
+              type="url"
+              value={customUrl}
+              onChange={(e) => setCustomUrl(e.target.value)}
+              placeholder="https://example.com/product.png"
+              disabled={pending}
+              className="block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700 disabled:opacity-60"
+            />
+          )}
+
+          {uploadErr && (
+            <p className="rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700">
+              {uploadErr}
+            </p>
+          )}
+          {state.error && (
+            <p className="rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700">
+              {state.error}
+            </p>
+          )}
+
+          <div className="mt-auto flex flex-wrap gap-2">
+            <form action={formAction}>
+              <input type="hidden" name="id" value={creativeId} />
+              <input type="hidden" name="variantIndex" value={variantIndex} />
+              <input type="hidden" name="imageSource" value={source} />
+              <input type="hidden" name="customImageUrl" value={customUrl} />
+              <button
+                type="submit"
+                disabled={submitDisabled}
+                className="rounded-md bg-gradient-to-br from-emerald-600 to-emerald-800 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+              >
+                {pending
+                  ? "Speichere…"
+                  : liveUrl
+                    ? "Produktbild ersetzen"
+                    : "Produktbild setzen"}
+              </button>
+            </form>
+            {liveUrl && (
+              <form action={deleteProductImage}>
+                <input type="hidden" name="id" value={creativeId} />
+                <input type="hidden" name="variantIndex" value={variantIndex} />
+                <button
+                  type="submit"
+                  className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                >
+                  Entfernen
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TinyTile({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: string;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "flex items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-all duration-150 " +
+        (active
+          ? "border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-300"
+          : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40")
+      }
+    >
+      <span>{icon}</span>
+      <span>{label}</span>
+    </button>
   );
 }
 

@@ -19,6 +19,14 @@ export type VariantImage = {
   imageUrl: string;
   imagePrompt: string | null;
   provider: ImageProvider | null;
+  productImageUrl: string | null;
+};
+
+export type ProductImageState = {
+  ok: boolean;
+  error?: string;
+  variantIndex?: number;
+  productImageUrl?: string | null;
 };
 
 export type ImageState = {
@@ -287,6 +295,139 @@ function inferExt(mediaType: string): string {
   if (mediaType.includes("webp")) return "webp";
   if (mediaType.includes("jpeg") || mediaType.includes("jpg")) return "jpg";
   return mediaType.split("/")[1] ?? "png";
+}
+
+// ---------------------------------------------------------------------------
+// Produkt-Bild — separates Bild pro Variante (z. B. WODOIL-Kanister auf Szene)
+// ---------------------------------------------------------------------------
+export async function setProductImage(
+  _prev: ProductImageState,
+  formData: FormData,
+): Promise<ProductImageState> {
+  const creativeId = String(formData.get("id") ?? "");
+  const sourceInput = String(formData.get("imageSource") ?? "upload");
+  const source = sourceInput === "url" ? "url" : "upload";
+  const customImageUrl = String(formData.get("customImageUrl") ?? "").trim();
+
+  const variantIndexRaw = Number(formData.get("variantIndex"));
+  const variantIndex =
+    Number.isInteger(variantIndexRaw) &&
+    variantIndexRaw >= 0 &&
+    variantIndexRaw < 10
+      ? variantIndexRaw
+      : -1;
+
+  if (!creativeId) return { ok: false, error: "Keine Creative-ID übergeben." };
+  if (variantIndex < 0)
+    return { ok: false, error: "Ungültiger Varianten-Index." };
+  if (!customImageUrl) {
+    return {
+      ok: false,
+      error:
+        source === "upload"
+          ? "Bitte lade zuerst ein Produktbild hoch."
+          : "Bitte gib eine Bild-URL an.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Nicht eingeloggt." };
+
+  const fetched = await fetchImageBytes(customImageUrl);
+  if (!fetched.ok) return { ok: false, error: fetched.error };
+
+  const ext = inferExt(fetched.mediaType);
+  const path = `${user.id}/${creativeId}/${variantIndex}-product.${ext}`;
+  const { error: uploadErr } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, fetched.bytes, {
+      contentType: fetched.mediaType,
+      upsert: true,
+      cacheControl: "0",
+    });
+  if (uploadErr)
+    return { ok: false, error: `Upload fehlgeschlagen: ${uploadErr.message}` };
+
+  const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  const publicUrl = `${pub.publicUrl}?v=${Date.now()}`;
+
+  // Stelle sicher, dass die Variante eine Row hat — wenn nicht, blocke.
+  // Ein Produktbild ohne Haupt-Bild macht render-technisch keinen Sinn,
+  // aber UX-mäßig erlauben wir es trotzdem als Vorbereitung.
+  const { data: existing } = await supabase
+    .from("creative_images")
+    .select("id, image_url")
+    .eq("creative_id", creativeId)
+    .eq("variant_index", variantIndex)
+    .maybeSingle();
+
+  if (existing) {
+    const { error: updateErr } = await supabase
+      .from("creative_images")
+      .update({ product_image_url: publicUrl })
+      .eq("id", existing.id);
+    if (updateErr)
+      return { ok: false, error: `DB-Update fehlgeschlagen: ${updateErr.message}` };
+  } else {
+    // Kein Haupt-Bild vorhanden: lege Pseudo-Row an, image_url leer ist nicht
+    // erlaubt → nutze die Produktbild-URL als Platzhalter, das echte Bild
+    // wird beim ersten "Bild generieren/übernehmen" überschrieben.
+    const { error: insertErr } = await supabase
+      .from("creative_images")
+      .insert({
+        user_id: user.id,
+        creative_id: creativeId,
+        variant_index: variantIndex,
+        image_url: publicUrl,
+        product_image_url: publicUrl,
+      });
+    if (insertErr)
+      return { ok: false, error: `DB-Insert fehlgeschlagen: ${insertErr.message}` };
+  }
+
+  revalidatePath("/dashboard/library");
+  revalidatePath(`/dashboard/library/${creativeId}`);
+
+  return { ok: true, variantIndex, productImageUrl: publicUrl };
+}
+
+export async function deleteProductImage(formData: FormData): Promise<void> {
+  const creativeId = String(formData.get("id") ?? "");
+  const variantIndexRaw = Number(formData.get("variantIndex"));
+  const variantIndex =
+    Number.isInteger(variantIndexRaw) &&
+    variantIndexRaw >= 0 &&
+    variantIndexRaw < 10
+      ? variantIndexRaw
+      : -1;
+  if (!creativeId || variantIndex < 0) return;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase.storage
+    .from(BUCKET)
+    .remove([
+      `${user.id}/${creativeId}/${variantIndex}-product.png`,
+      `${user.id}/${creativeId}/${variantIndex}-product.jpg`,
+      `${user.id}/${creativeId}/${variantIndex}-product.jpeg`,
+      `${user.id}/${creativeId}/${variantIndex}-product.webp`,
+    ]);
+
+  await supabase
+    .from("creative_images")
+    .update({ product_image_url: null })
+    .eq("creative_id", creativeId)
+    .eq("variant_index", variantIndex);
+
+  revalidatePath("/dashboard/library");
+  revalidatePath(`/dashboard/library/${creativeId}`);
 }
 
 export async function deleteCreativeImage(formData: FormData): Promise<void> {
