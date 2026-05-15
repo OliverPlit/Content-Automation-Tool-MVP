@@ -17,9 +17,9 @@ export type TemplateMeta = {
 export const TEMPLATE_META: Record<TemplateKind, TemplateMeta> = {
   staticSquare: {
     kind: "staticSquare",
-    label: "Static 1:1",
-    description: "Quadratisches Bild für Insta-Feed (JPG)",
-    aspectRatio: "1:1",
+    label: "Static 9:16",
+    description: "Hochformat-Standbild für Story / Reels-Cover (JPG)",
+    aspectRatio: "9:16",
     outputExt: "jpg",
     envVar: "CREATOMATE_TEMPLATE_STATIC_SQUARE",
   },
