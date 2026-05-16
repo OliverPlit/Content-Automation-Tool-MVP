@@ -34,8 +34,6 @@ export function CreativeWorkspace({
   promptText: string;
   templateAvailability: Record<TemplateKind, boolean>;
 }) {
-  const [active, setActive] = useState(0);
-
   const imageByVariant = new Map<number, VariantImage>();
   images.forEach((img) => imageByVariant.set(img.variantIndex, img));
 
@@ -56,22 +54,11 @@ export function CreativeWorkspace({
         promptText={promptText}
       />
 
-      <VariantTabs
-        active={active}
-        setActive={setActive}
+      <VariantAccordion
+        creativeId={id}
         variants={initial.variants}
         imageByVariant={imageByVariant}
         rendersByVariant={rendersByVariant}
-      />
-
-      <VariantPanel
-        key={active}
-        creativeId={id}
-        index={active}
-        body={initial.variants[active].body}
-        cta={initial.variants[active].cta}
-        image={imageByVariant.get(active) ?? null}
-        renders={rendersByVariant.get(active) ?? []}
         templateAvailability={templateAvailability}
       />
 
@@ -196,54 +183,173 @@ function HeaderCard({
 // ---------------------------------------------------------------------------
 // Variant tabs
 // ---------------------------------------------------------------------------
-function VariantTabs({
-  active,
-  setActive,
+// ---------------------------------------------------------------------------
+// VariantAccordion — Alle Varianten als kollabierbare Karten.
+// Default: V1 offen, andere zu. Mehrere können gleichzeitig offen sein.
+// ---------------------------------------------------------------------------
+function VariantAccordion({
+  creativeId,
   variants,
   imageByVariant,
   rendersByVariant,
+  templateAvailability,
 }: {
-  active: number;
-  setActive: (i: number) => void;
+  creativeId: string;
   variants: AdCopy["variants"];
   imageByVariant: Map<number, VariantImage>;
   rendersByVariant: Map<number, RenderRecord[]>;
+  templateAvailability: Record<TemplateKind, boolean>;
 }) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
+
+  const toggle = (i: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+
+  const expandAll = () =>
+    setExpanded(new Set(variants.map((_, i) => i)));
+  const collapseAll = () => setExpanded(new Set());
+
+  const openCount = expanded.size;
+  const allOpen = openCount === variants.length;
+
   return (
-    <nav className="flex flex-wrap gap-1.5" role="tablist">
-      {variants.map((v, i) => {
-        const hasImage = imageByVariant.has(i);
-        const hasRender = (rendersByVariant.get(i) ?? []).some(
-          (r) => r.status === "succeeded",
-        );
-        const isActive = i === active;
-        return (
-          <button
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-blue-900">
+          Varianten ({variants.length})
+        </h2>
+        <button
+          type="button"
+          onClick={allOpen ? collapseAll : expandAll}
+          className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {allOpen ? "⊟ Alle einklappen" : "⊞ Alle aufklappen"}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {variants.map((v, i) => (
+          <AccordionItem
             key={i}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => setActive(i)}
-            className={
-              "flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-all duration-150 " +
-              (isActive
-                ? "border-blue-700 bg-gradient-to-br from-blue-800 to-blue-950 text-white shadow-lg shadow-blue-900/30"
-                : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:bg-blue-50 hover:shadow-md")
-            }
-          >
-            <span className="flex items-center gap-1">
-              <Dot color={hasRender ? "indigo" : hasImage ? "emerald" : "gray"} />
-              <span className={`font-bold ${isActive ? "text-white" : "text-slate-900"}`}>
-                V{i + 1}
-              </span>
+            creativeId={creativeId}
+            index={i}
+            body={v.body}
+            cta={v.cta}
+            image={imageByVariant.get(i) ?? null}
+            renders={rendersByVariant.get(i) ?? []}
+            templateAvailability={templateAvailability}
+            isOpen={expanded.has(i)}
+            onToggle={() => toggle(i)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AccordionItem({
+  creativeId,
+  index,
+  body,
+  cta,
+  image,
+  renders,
+  templateAvailability,
+  isOpen,
+  onToggle,
+}: {
+  creativeId: string;
+  index: number;
+  body: string;
+  cta: string;
+  image: VariantImage | null;
+  renders: RenderRecord[];
+  templateAvailability: Record<TemplateKind, boolean>;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  const hasImage = !!image;
+  const hasRender = renders.some((r) => r.status === "succeeded");
+  const renderCount = renders.filter((r) => r.status === "succeeded").length;
+  const dotColor = hasRender ? "indigo" : hasImage ? "emerald" : "gray";
+
+  return (
+    <article
+      className={
+        "overflow-hidden rounded-2xl border bg-white shadow-md shadow-blue-900/5 transition-all " +
+        (isOpen
+          ? "border-blue-300 ring-1 ring-blue-200"
+          : "border-slate-200 hover:border-blue-200")
+      }
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-blue-50/40"
+      >
+        <span
+          className={
+            "inline-flex h-5 w-5 shrink-0 items-center justify-center text-sm text-slate-400 transition-transform " +
+            (isOpen ? "rotate-90 text-blue-700" : "")
+          }
+          aria-hidden
+        >
+          ▶
+        </span>
+        <Dot color={dotColor} />
+        <span className="font-bold text-slate-900">V{index + 1}</span>
+        <span className="truncate text-sm font-semibold text-blue-800">
+          {cta || <em className="text-slate-400">kein CTA</em>}
+        </span>
+        <span className="ml-auto flex items-center gap-2 text-xs text-slate-500">
+          {hasImage && (
+            <span
+              title="Bild vorhanden"
+              className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 ring-1 ring-emerald-200"
+            >
+              🖼️ Bild
             </span>
-            <span className={`max-w-[140px] truncate text-xs ${isActive ? "text-blue-100" : "text-slate-600"}`}>
-              {v.cta}
+          )}
+          {renderCount > 0 && (
+            <span
+              title={`${renderCount} Render${renderCount === 1 ? "" : "s"}`}
+              className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-800 ring-1 ring-blue-200"
+            >
+              🎬 {renderCount}
             </span>
-          </button>
-        );
-      })}
-    </nav>
+          )}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="space-y-4 border-t border-slate-200 bg-gradient-to-b from-slate-50/60 to-white p-4">
+          <VariantEditCard
+            creativeId={creativeId}
+            index={index}
+            body={body}
+            cta={cta}
+          />
+          <VariantImageBlock
+            creativeId={creativeId}
+            variantIndex={index}
+            image={image}
+          />
+          <VariantRendersBlock
+            creativeId={creativeId}
+            variantIndex={index}
+            renders={renders}
+            hasImage={hasImage}
+            templateAvailability={templateAvailability}
+          />
+        </div>
+      )}
+    </article>
   );
 }
 
@@ -255,50 +361,6 @@ function Dot({ color }: { color: "indigo" | "emerald" | "gray" }) {
         ? "bg-emerald-500"
         : "bg-slate-300";
   return <span className={`block h-2 w-2 rounded-full ${cls}`} />;
-}
-
-// ---------------------------------------------------------------------------
-// Variant panel — Body+CTA edit + Image + Renders
-// ---------------------------------------------------------------------------
-function VariantPanel({
-  creativeId,
-  index,
-  body,
-  cta,
-  image,
-  renders,
-  templateAvailability,
-}: {
-  creativeId: string;
-  index: number;
-  body: string;
-  cta: string;
-  image: VariantImage | null;
-  renders: RenderRecord[];
-  templateAvailability: Record<TemplateKind, boolean>;
-}) {
-  return (
-    <section className="space-y-4">
-      <VariantEditCard
-        creativeId={creativeId}
-        index={index}
-        body={body}
-        cta={cta}
-      />
-      <VariantImageBlock
-        creativeId={creativeId}
-        variantIndex={index}
-        image={image}
-      />
-      <VariantRendersBlock
-        creativeId={creativeId}
-        variantIndex={index}
-        renders={renders}
-        hasImage={!!image}
-        templateAvailability={templateAvailability}
-      />
-    </section>
-  );
 }
 
 function VariantEditCard({
