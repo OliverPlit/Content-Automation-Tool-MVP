@@ -1,0 +1,168 @@
+import { NextResponse } from "next/server";
+
+import { createClient } from "@/lib/supabase/server";
+import {
+  csvToRecords,
+  detectKind,
+  parseCsv,
+  type MetaImportKind,
+} from "@/lib/meta-import/csv";
+import {
+  extractAdsPerfInsights,
+  extractAudienceInsights,
+  extractPostsInsights,
+  extractProductsInsights,
+  type AnyInsights,
+} from "@/lib/meta-import/insights";
+
+const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const ALLOWED_EXT = ["csv", "tsv", "txt"];
+
+export async function POST(req: Request) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Nicht eingeloggt." }, { status: 401 });
+    }
+
+    const form = await req.formData();
+    const file = form.get("file");
+    const forcedKindRaw = String(form.get("kind") ?? "");
+
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "Keine Datei übergeben." }, { status: 400 });
+    }
+    if (file.size > MAX_BYTES) {
+      return NextResponse.json(
+        { error: `Datei zu groß (max ${MAX_BYTES / 1024 / 1024} MB).` },
+        { status: 413 },
+      );
+    }
+    const ext = (file.name.split(".").pop() ?? "").toLowerCase();
+    if (!ALLOWED_EXT.includes(ext)) {
+      return NextResponse.json(
+        { error: `Dateityp nicht erlaubt: .${ext} — erwartet .csv/.tsv/.txt` },
+        { status: 415 },
+      );
+    }
+
+    let text = await file.text();
+    // TSV → wir konvertieren Tabs zu Kommas (rudimentär — funktioniert für
+    // simple Exporte ohne Tabs in Werten).
+    if (ext === "tsv") text = text.replace(/\t/g, ",");
+
+    const rows = parseCsv(text);
+    if (rows.length < 2) {
+      return NextResponse.json(
+        { error: "CSV enthält keine Daten-Rows (mindestens Header + 1 Row nötig)." },
+        { status: 400 },
+      );
+    }
+
+    // Kind-Detection (mit User-Override)
+    const detected = detectKind(rows[0]);
+    const validKinds: MetaImportKind[] = [
+      "posts",
+      "ads_performance",
+      "audience",
+      "products",
+    ];
+    const forcedKind = validKinds.includes(forcedKindRaw as MetaImportKind)
+      ? (forcedKindRaw as MetaImportKind)
+      : null;
+    const kind: MetaImportKind | null = forcedKind ?? detected.kind;
+    if (!kind) {
+      return NextResponse.json(
+        {
+          error:
+            "CSV-Typ konnte nicht erkannt werden. Bitte oben Typ manuell wählen.",
+          headers: rows[0],
+          scores: detected.scores,
+        },
+        { status: 422 },
+      );
+    }
+
+    const records = csvToRecords(rows);
+
+    // Insights extrahieren je nach Kind
+    let insights: AnyInsights;
+    switch (kind) {
+      case "posts":
+        insights = { kind, data: extractPostsInsights(records) };
+        break;
+      case "ads_performance":
+        insights = { kind, data: extractAdsPerfInsights(records) };
+        break;
+      case "audience":
+        insights = { kind, data: extractAudienceInsights(records) };
+        break;
+      case "products":
+        insights = { kind, data: extractProductsInsights(records) };
+        break;
+    }
+
+    // DB-Insert. raw_csv kappen auf 1 MB Text damit DB-Row nicht explodiert.
+    const rawClipped = text.length > 1_000_000 ? text.slice(0, 1_000_000) : text;
+    const { data: row, error: insertErr } = await supabase
+      .from("meta_imports")
+      .insert({
+        user_id: user.id,
+        kind,
+        filename: file.name,
+        row_count: records.length,
+        raw_csv: rawClipped,
+        parsed_json: records.slice(0, 500), // erste 500 Rows, mehr brauchen wir nicht zum Lesen
+        insights: insights.data,
+      })
+      .select("id, kind, row_count, insights, created_at")
+      .single();
+
+    if (insertErr || !row) {
+      return NextResponse.json(
+        { error: `DB-Insert: ${insertErr?.message ?? "unbekannt"}` },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      id: row.id,
+      kind,
+      rowCount: records.length,
+      insights: insights.data,
+      detection: {
+        autoDetected: detected.kind === kind,
+        confidence: Math.round(detected.confidence * 100),
+        scores: detected.scores,
+      },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unbekannter Fehler.";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+// GET: letzte Imports für den User (für UI-Anzeige nach Reload)
+export async function GET() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Nicht eingeloggt." }, { status: 401 });
+  }
+  const { data, error } = await supabase
+    .from("meta_imports")
+    .select("id, kind, filename, row_count, insights, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ imports: data ?? [] });
+}

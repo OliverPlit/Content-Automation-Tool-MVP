@@ -3,7 +3,6 @@
 import { useActionState, useState } from "react";
 
 import {
-  type ImageProvider,
   type ImageState,
   type ProductImageState,
   type VariantImage,
@@ -19,19 +18,6 @@ const initialProduct: ProductImageState = { ok: false };
 type SourceMode = "ai" | "upload" | "url";
 type ProductSourceMode = "upload" | "url";
 
-const PROVIDERS: { value: ImageProvider; label: string; hint: string }[] = [
-  {
-    value: "openai",
-    label: "OpenAI gpt-image-1",
-    hint: "≈ 4 ¢ pro Bild · braucht OpenAI-Billing",
-  },
-  {
-    value: "gemini",
-    label: "Google Gemini 2.5 Flash Image",
-    hint: "≈ 4 ¢ pro Bild · Free Tier oft eingeschränkt",
-  },
-];
-
 export function VariantImageBlock({
   creativeId,
   variantIndex,
@@ -45,8 +31,6 @@ export function VariantImageBlock({
     generateCreativeImage,
     initial,
   );
-  const [provider, setProvider] = useState<ImageProvider>("openai");
-  const activeProvider = PROVIDERS.find((p) => p.value === provider)!;
 
   // Bild-Quelle
   const [source, setSource] = useState<SourceMode>("ai");
@@ -172,28 +156,9 @@ export function VariantImageBlock({
 
           {/* ---------- Source-spezifische Felder ---------- */}
           {source === "ai" && (
-            <div>
-              <label
-                htmlFor={`provider-${variantIndex}`}
-                className="block text-xs font-medium uppercase tracking-wide text-slate-500"
-              >
-                KI-Anbieter
-              </label>
-              <select
-                id={`provider-${variantIndex}`}
-                value={provider}
-                onChange={(e) => setProvider(e.target.value as ImageProvider)}
-                disabled={pending}
-                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700 disabled:opacity-60"
-              >
-                {PROVIDERS.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-slate-500">{activeProvider.hint}</p>
-            </div>
+            <p className="text-xs text-slate-500">
+              KI-Anbieter: <strong>Google Gemini 2.5 Flash Image</strong> (Nano Banana) · ≈ 4 ¢ pro Bild.
+            </p>
           )}
 
           {source === "upload" && (
@@ -256,7 +221,7 @@ export function VariantImageBlock({
               <input type="hidden" name="id" value={creativeId} />
               <input type="hidden" name="variantIndex" value={variantIndex} />
               <input type="hidden" name="imageSource" value={source} />
-              <input type="hidden" name="provider" value={provider} />
+              <input type="hidden" name="provider" value="gemini" />
               <input
                 type="hidden"
                 name="customImageUrl"

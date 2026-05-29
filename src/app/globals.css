@@ -2,25 +2,56 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #1d1d1f;       /* Apple-Text-Schwarz (nicht reines #000) */
+  --color-accent: #0071e3;     /* Apple System Blue */
+  --color-accent-hover: #0077ed;
+  --color-muted: #6e6e73;      /* Apple Secondary Gray */
+  --color-line: #d2d2d7;       /* Apple Hairline */
+  --color-surface: #f5f5f7;    /* Apple Surface Gray */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Helvetica Neue", "Helvetica", "Arial", system-ui, sans-serif;
+  --font-mono:
+    "SF Mono", ui-monospace, "Menlo", "Consolas", monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #000000;
+    --foreground: #f5f5f7;
+    --color-accent: #2997ff;     /* Apple Dark-Blau */
+    --color-muted: #86868b;
+    --color-line: #424245;
+    --color-surface: #1d1d1f;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Helvetica Neue", "Helvetica", "Arial", system-ui, sans-serif;
+  /* Apple-typische Type-Smoothing für scharfe Schrift */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Apple nutzt knappere Lettern-Abstände auf großen Headlines */
+  letter-spacing: -0.01em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  /* Apple-typisches Display-Tracking */
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+/* Subtilere Selektion (Apple nutzt sehr leichte Akzentfarbe) */
+::selection {
+  background: rgba(0, 113, 227, 0.18);
+  color: inherit;
 }

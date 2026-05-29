@@ -1,15 +1,17 @@
 "use server";
 
 import { generateImage, generateText } from "ai";
-import { google } from "@ai-sdk/google";
-import { openai } from "@ai-sdk/openai";
+import { google } from "@/lib/ai/google-client";
+import { openai } from "@/lib/ai/openai-client";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { adCopyLooseSchema } from "../../generate/schema";
 
-export type ImageProvider = "openai" | "gemini";
+// Bild-Provider ist fix: Google Gemini 2.5 Flash Image ("Nano Banana").
+// Der Type bleibt aus DB-Kompatibilität, aber es gibt nur einen Wert.
+export type ImageProvider = "gemini";
 export type ImageSourceMode = "ai" | "upload" | "url";
 
 const BUCKET = "creative-images";
@@ -47,14 +49,30 @@ Given an ad copy in German, write ONE concise English image prompt (max. 80 word
 
 Do NOT include text overlays or words inside the image. Output only the prompt, no explanation.`;
 
+// Wenn ein Produktbild als Overlay drüberkommt, MUSS der Hintergrund frei von
+// Produkten/Kanister/Flaschen sein — sonst Doppel-Kanister im Render.
+const VISUAL_PROMPT_SYSTEM_WITH_PRODUCT_OVERLAY = `You are a senior art director writing image prompts for paid social ads (Meta, TikTok, Google).
+Given an ad copy in German, write ONE concise English image prompt (max. 80 words) that describes:
+- scene & subject (background context only — NO product)
+- lighting & mood
+- style (photo, illustration, 3D — pick what fits the brand)
+- composition: leave the LOWER-RIGHT or CENTER-FOREGROUND area clean/empty for a product overlay
+
+CRITICAL RULES — A product image will be composited on top of this background:
+- DO NOT include any oil canister, lubricant container, bottle, drum, jerrycan, fuel can, or any product packaging in the scene
+- DO NOT include any branded products, logos, labels, or text
+- Focus on the environment, machinery, people, and atmosphere ONLY
+- The composition must have clean space (lower-right preferred) where a product image will be placed
+
+Output only the prompt, no explanation.`;
+
 export async function generateCreativeImage(
   _prev: ImageState,
   formData: FormData,
 ): Promise<ImageState> {
   const id = String(formData.get("id") ?? "");
-  const providerInput = String(formData.get("provider") ?? "openai");
-  const provider: ImageProvider =
-    providerInput === "gemini" ? "gemini" : "openai";
+  // Provider ist fix Gemini — Input wird ignoriert.
+  const provider: ImageProvider = "gemini";
 
   // Neue Quelle (Default = AI für Backward-Compat)
   const sourceInput = String(formData.get("imageSource") ?? "ai");
@@ -134,18 +152,37 @@ export async function generateCreativeImage(
   let dbProvider: ImageProvider | null = null;
 
   if (source === "ai") {
+    // Prüfe ob diese Variante bereits ein Produktbild als Overlay hat —
+    // dann muss der Hintergrund-Prompt explizit OHNE Kanister erzeugt werden,
+    // sonst doppelter Kanister im fertigen Render.
+    const { data: existingImage } = await supabase
+      .from("creative_images")
+      .select("product_image_url")
+      .eq("creative_id", id)
+      .eq("variant_index", variantIndex)
+      .maybeSingle();
+    const hasProductOverlay = Boolean(existingImage?.product_image_url);
+
     // 1. OpenAI → Visual Prompt
     try {
       const { text } = await generateText({
         model: openai("gpt-4o-mini"),
-        system: VISUAL_PROMPT_SYSTEM,
+        system: hasProductOverlay
+          ? VISUAL_PROMPT_SYSTEM_WITH_PRODUCT_OVERLAY
+          : VISUAL_PROMPT_SYSTEM,
         prompt: `Headline: ${adCopy.headline}
 Subline: ${adCopy.subline}
 Body (Variante ${variantIndex + 1}): ${variant.body}
-CTA: ${variant.cta}`,
+CTA: ${variant.cta}
+${hasProductOverlay ? "\n[A separate product image will be composited on top — keep the background clean of products/canisters/bottles.]" : ""}`,
         temperature: 0.7,
       });
       visualPrompt = text.trim();
+      if (hasProductOverlay) {
+        // Doppelte Sicherheit: harte negative Prompt-Anweisung anhängen,
+        // damit Gemini keinen Kanister in den Hintergrund rendert.
+        visualPrompt += " No oil canister, no lubricant container, no bottle, no drum, no jerrycan, no product packaging, no labels, no logos. Clean composition with empty foreground space.";
+      }
       if (!visualPrompt)
         return { ok: false, error: "Leerer Bild-Prompt von OpenAI." };
     } catch (err) {
@@ -153,20 +190,13 @@ CTA: ${variant.cta}`,
       return { ok: false, error: `Prompt-Generierung fehlgeschlagen: ${msg}` };
     }
 
-    // 2. Bild-Modell aufrufen
+    // 2. Bild-Modell aufrufen (nur Gemini 2.5 Flash Image)
     try {
-      const result =
-        provider === "gemini"
-          ? await generateImage({
-              model: google.image("gemini-2.5-flash-image"),
-              prompt: visualPrompt,
-              aspectRatio: "1:1",
-            })
-          : await generateImage({
-              model: openai.image("gpt-image-1"),
-              prompt: visualPrompt,
-              size: "1024x1024",
-            });
+      const result = await generateImage({
+        model: google.image("gemini-2.5-flash-image"),
+        prompt: visualPrompt,
+        aspectRatio: "1:1",
+      });
       bytes = result.image.uint8Array;
       mediaType = result.image.mediaType || "image/png";
       dbProvider = provider;
@@ -176,10 +206,7 @@ CTA: ${variant.cta}`,
       if (isQuota) {
         return {
           ok: false,
-          error:
-            provider === "gemini"
-              ? "Gemini-Quota/Billing-Problem. In Google AI Studio prüfen."
-              : "OpenAI-Limit/Billing-Problem. https://platform.openai.com/usage prüfen.",
+          error: "Gemini-Quota/Billing-Problem. In Google AI Studio prüfen.",
         };
       }
       return { ok: false, error: `Bild-Generierung fehlgeschlagen: ${msg}` };

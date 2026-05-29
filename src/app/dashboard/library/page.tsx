@@ -1,4 +1,7 @@
+import Link from "next/link";
+
 import { createClient } from "@/lib/supabase/server";
+import { Icon } from "@/components/icon";
 import { adCopyLooseSchema } from "../generate/schema";
 import { LibraryList, type LibraryItem } from "./library-list";
 
@@ -26,16 +29,24 @@ export default async function LibraryPage() {
   const [
     { data, error },
     { data: projectRows },
+    { count: assignedCount },
   ] = await Promise.all([
     supabase
       .from("creatives")
       .select("id, prompt, output, status, created_at, project_id")
+      // LB1 — nur unzugeordnete Creatives (project_id IS NULL).
+      // Zugeordnete sind unter /dashboard/projects/<id> sichtbar.
+      .is("project_id", null)
       .order("created_at", { ascending: false })
       .limit(200),
     supabase
       .from("projects")
       .select("id, name")
       .order("name", { ascending: true }),
+    supabase
+      .from("creatives")
+      .select("id", { count: "exact", head: true })
+      .not("project_id", "is", null),
   ]);
 
   const creatives = (data ?? []) as Row[];
@@ -113,14 +124,35 @@ export default async function LibraryPage() {
   }));
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <header className="mb-6 rounded-2xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 px-6 py-7 text-white shadow-xl shadow-blue-900/20">
-        <h1 className="text-3xl font-bold tracking-tight">Library</h1>
-        <p className="mt-1 max-w-xl text-sm text-blue-100">
-          Alle gespeicherten Creatives. Klick einen Eintrag an für Tabs pro
-          Variante, Bilder und Renders.
+    <div className="mx-auto max-w-5xl">
+      <header className="mb-6">
+        <h1 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+          Library
+        </h1>
+        <p className="mt-1 text-[14px] text-[var(--color-muted)]">
+          Creatives ohne Projekt-Zuordnung. Hier kannst du sie nachträglich
+          einem Projekt zuweisen.
         </p>
       </header>
+
+      {(assignedCount ?? 0) > 0 && (
+        <Link
+          href="/dashboard/projects"
+          className="mb-4 flex items-center justify-between rounded-xl border border-[var(--color-line)] bg-white px-4 py-3 text-[13px] text-[var(--foreground)] transition-colors hover:bg-[var(--color-surface)]"
+        >
+          <span className="flex items-center gap-2">
+            <Icon name="folder" className="size-4 text-[var(--color-muted)]" />
+            <span>
+              {assignedCount} weitere Creative
+              {assignedCount === 1 ? "" : "s"} sind Projekten zugeordnet
+            </span>
+          </span>
+          <span className="flex items-center gap-1 text-[var(--color-muted)]">
+            Projekte ansehen
+            <Icon name="chevron-right" className="size-3.5" />
+          </span>
+        </Link>
+      )}
 
       {error && (
         <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">

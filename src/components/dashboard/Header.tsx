@@ -1,18 +1,20 @@
 export function Header({ email }: { email: string }) {
   return (
-    <header className="flex items-center justify-between border-b border-slate-200 bg-white/80 px-6 py-4 backdrop-blur-md shadow-sm">
+    <header className="flex items-center justify-between border-b border-[var(--color-line)] bg-white/80 px-6 py-3 backdrop-blur-xl">
       <div>
-        <div className="text-[10px] uppercase tracking-wider text-slate-400">
+        <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
           Eingeloggt als
         </div>
-        <div className="text-sm font-semibold text-slate-900">{email}</div>
+        <div className="text-[13px] font-medium text-[var(--foreground)]">
+          {email}
+        </div>
       </div>
       <form action="/auth/signout" method="post">
         <button
           type="submit"
-          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-all duration-150 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-900 hover:shadow"
+          className="rounded-full border border-[var(--color-line)] bg-white px-3.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--color-surface)]"
         >
-          Logout
+          Abmelden
         </button>
       </form>
     </header>

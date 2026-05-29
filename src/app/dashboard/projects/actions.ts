@@ -147,7 +147,11 @@ export async function assignCreativeToProject(
 ): Promise<void> {
   const creativeId = String(formData.get("creativeId") ?? "");
   const projectIdRaw = String(formData.get("projectId") ?? "");
+  const folderIdRaw = String(formData.get("folderId") ?? "");
   const projectId = projectIdRaw && projectIdRaw !== "none" ? projectIdRaw : null;
+  // Folder nur wenn auch Projekt — ein Folder ohne Projekt macht keinen Sinn.
+  const folderId =
+    projectId && folderIdRaw && folderIdRaw !== "none" ? folderIdRaw : null;
 
   const parsed = assignSchema.safeParse({ creativeId, projectId });
   if (!parsed.success) return;
@@ -160,7 +164,10 @@ export async function assignCreativeToProject(
 
   await supabase
     .from("creatives")
-    .update({ project_id: parsed.data.projectId })
+    .update({
+      project_id: parsed.data.projectId,
+      folder_id: folderId,
+    })
     .eq("id", parsed.data.creativeId);
 
   revalidatePath("/dashboard/library");

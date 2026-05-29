@@ -5,7 +5,12 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { adCopyLooseSchema } from "../../generate/schema";
-import { TEMPLATE_META, getTemplateId } from "@/lib/creatomate/templates";
+import {
+  TEMPLATE_META,
+  diagnoseSlot,
+  getDefaultSlot,
+  getTemplateBySlot,
+} from "@/lib/creatomate/templates";
 
 const CREATOMATE_API_BASE = "https://api.creatomate.com/v1";
 const ACCENT_COLOR_DEFAULT = "#4F46E5"; // Indigo-600, passt zum übrigen UI
@@ -26,6 +31,7 @@ export type RenderRecord = {
   id: string;
   variantIndex: number;
   templateKind: "staticSquare" | "animatedSquare" | "reelVertical";
+  templateSlot: string | null;
   status: "pending" | "processing" | "succeeded" | "failed";
   outputUrl: string | null;
   errorMessage: string | null;
@@ -55,6 +61,7 @@ export async function startRender(
   const templateKindParsed = templateKindSchema.safeParse(
     formData.get("templateKind"),
   );
+  const templateSlotInput = String(formData.get("templateSlot") ?? "").trim();
 
   if (!creativeId) return { ok: false, error: "Creative-ID fehlt." };
   if (variantIndex < 0)
@@ -64,14 +71,29 @@ export async function startRender(
 
   const templateKind = templateKindParsed.data;
   const template = TEMPLATE_META[templateKind];
-  const templateId = getTemplateId(templateKind);
 
-  if (!templateId) {
+  // Slot bestimmen: explizite User-Wahl > Default des Kinds.
+  const slot = templateSlotInput || getDefaultSlot(templateKind);
+  if (!slot) {
     return {
       ok: false,
-      error: `Template-ID für "${template.label}" fehlt — bitte ${template.envVar} in der Env setzen.`,
+      error: `Kein Template für "${template.label}" konfiguriert — alle Slots ohne Env-Var. Lege z.B. CREATOMATE_TEMPLATE_STATIC_SQUARE in .env.local und/oder Vercel an.`,
     };
   }
+  const resolved = getTemplateBySlot(slot);
+  if (!resolved) {
+    // Detail-Diagnose: warum ist der Slot nicht auflösbar?
+    const diag = diagnoseSlot(slot);
+    return { ok: false, error: diag.hint };
+  }
+  if (resolved.kind !== templateKind) {
+    return {
+      ok: false,
+      error: `Template-Slot "${slot}" gehört zu Kind "${resolved.kind}", nicht zu "${templateKind}". Wahrscheinlich aus dem falschen Dropdown gewählt.`,
+    };
+  }
+  const templateId = resolved.creatomateId;
+
   if (!process.env.CREATOMATE_API_KEY) {
     return { ok: false, error: "CREATOMATE_API_KEY fehlt in der Env." };
   }
@@ -87,7 +109,7 @@ export async function startRender(
     await Promise.all([
       supabase
         .from("creatives")
-        .select("id, output")
+        .select("id, output, folder_id")
         .eq("id", creativeId)
         .single(),
       supabase
@@ -99,6 +121,28 @@ export async function startRender(
     ]);
   if (creativeErr || !creativeRow)
     return { ok: false, error: "Creative nicht gefunden." };
+
+  // Brand-Style aus dem Folder ziehen (falls vorhanden)
+  type FolderBrandRow = {
+    brand_primary_color: string | null;
+    brand_accent_color: string | null;
+    brand_background_color: string | null;
+    brand_text_color: string | null;
+    brand_font_family: string | null;
+    brand_font_weight: string | null;
+  };
+  let brand: FolderBrandRow | null = null;
+  const folderId = (creativeRow as { folder_id: string | null }).folder_id;
+  if (folderId) {
+    const { data: folderRow } = await supabase
+      .from("project_folders")
+      .select(
+        "brand_primary_color, brand_accent_color, brand_background_color, brand_text_color, brand_font_family, brand_font_weight",
+      )
+      .eq("id", folderId)
+      .single();
+    if (folderRow) brand = folderRow as FolderBrandRow;
+  }
   if (!imageRow?.image_url) {
     return {
       ok: false,
@@ -136,6 +180,8 @@ export async function startRender(
       creative_id: creativeId,
       variant_index: variantIndex,
       template_kind: templateKind,
+      template_slot: slot,
+      creatomate_template_id: templateId,
       status: "processing",
     })
     .select("id")
@@ -150,6 +196,16 @@ export async function startRender(
   // ("Background"/"Image-URL" for images, "CTA-Box"/"Accent-Color" for the
   // accent box). Creatomate silently ignores keys that don't match a real
   // element/property, so over-sending is safe.
+  //
+  // Brand-Werte: wenn im Folder gesetzt, überschreiben sie die Defaults.
+  // Sonst Template-Default (kein Send).
+  const primaryColor = brand?.brand_primary_color ?? ACCENT_COLOR_DEFAULT;
+  const accentColor = brand?.brand_accent_color ?? primaryColor;
+  const bgColor = brand?.brand_background_color ?? null;
+  const textColor = brand?.brand_text_color ?? null;
+  const fontFamily = brand?.brand_font_family ?? null;
+  const fontWeight = brand?.brand_font_weight ?? null;
+
   const modifications: Record<string, string> = {
     // Text
     Headline: adCopy.headline,
@@ -163,12 +219,47 @@ export async function startRender(
     "Background.source": imageUrlClean,
     "Image-URL": imageUrlClean,
     "Image-URL.source": imageUrlClean,
-    // Accent color
-    "CTA-Box": ACCENT_COLOR_DEFAULT,
-    "CTA-Box.fill_color": ACCENT_COLOR_DEFAULT,
-    "Accent-Color": ACCENT_COLOR_DEFAULT,
-    "Accent-Color.fill_color": ACCENT_COLOR_DEFAULT,
+    // Primary/Accent (CTA-Box-Hintergrund + Akzent-Shape)
+    "CTA-Box": primaryColor,
+    "CTA-Box.fill_color": primaryColor,
+    "Primary-Color": primaryColor,
+    "Primary-Color.fill_color": primaryColor,
+    "Accent-Color": accentColor,
+    "Accent-Color.fill_color": accentColor,
   };
+
+  // Brand-Text-Color (Headline + Subline)
+  if (textColor) {
+    modifications["Headline.fill_color"] = textColor;
+    modifications["Subline.fill_color"] = textColor;
+    modifications["Text-Color"] = textColor;
+    modifications["Text-Color.fill_color"] = textColor;
+  }
+  // Brand-CTA-Text-Color (kontrastiert auf Button-BG)
+  if (textColor) {
+    modifications["CTA.fill_color"] = textColor;
+  }
+
+  // Brand-Background-Color (komplett-Hintergrund / „fill_color" des Canvas)
+  if (bgColor) {
+    modifications["Background-Color"] = bgColor;
+    modifications["Background-Color.fill_color"] = bgColor;
+    modifications["Canvas.fill_color"] = bgColor;
+  }
+
+  // Brand-Font: auf alle Text-Elemente anwenden
+  if (fontFamily) {
+    modifications["Headline.font_family"] = fontFamily;
+    modifications["Subline.font_family"] = fontFamily;
+    modifications["CTA.font_family"] = fontFamily;
+    modifications["Body.font_family"] = fontFamily;
+    modifications["Font-Family"] = fontFamily;
+  }
+  if (fontWeight) {
+    modifications["Headline.font_weight"] = fontWeight;
+    modifications["CTA.font_weight"] = fontWeight;
+    modifications["Font-Weight"] = fontWeight;
+  }
 
   // Optionales Produktbild — wird im Template als Overlay über Background gelegt.
   // Mehrere Naming-Konventionen, damit verschiedene Templates funktionieren.
@@ -237,6 +328,127 @@ async function markRenderFailed(
     .from("creative_renders")
     .update({ status: "failed", error_message: message })
     .eq("id", renderRowId);
+}
+
+// ---------------------------------------------------------------------------
+// startBulkRender — feuert alle 3 Templates (oder optional: alle Varianten ×
+// alle Templates) PARALLEL zu Creatomate. Erspart das einzelne Klicken.
+// ---------------------------------------------------------------------------
+export type BulkRenderState = {
+  ok: boolean;
+  error?: string;
+  startedCount?: number;
+  failedCount?: number;
+  errors?: string[];
+};
+
+export async function startBulkRender(
+  _prev: BulkRenderState,
+  formData: FormData,
+): Promise<BulkRenderState> {
+  const creativeId = String(formData.get("creativeId") ?? "");
+  const scope = String(formData.get("scope") ?? "variant"); // "variant" | "all"
+  const variantIndexRaw = Number(formData.get("variantIndex"));
+  const targetVariantIndex =
+    Number.isInteger(variantIndexRaw) &&
+    variantIndexRaw >= 0 &&
+    variantIndexRaw < 10
+      ? variantIndexRaw
+      : -1;
+
+  if (!creativeId) return { ok: false, error: "Creative-ID fehlt." };
+  if (scope === "variant" && targetVariantIndex < 0) {
+    return { ok: false, error: "Varianten-Index ungültig." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Nicht eingeloggt." };
+
+  // Ermittle welche Varianten Bilder haben (nur die können gerendert werden)
+  const { data: images } = await supabase
+    .from("creative_images")
+    .select("variant_index, image_url")
+    .eq("creative_id", creativeId);
+
+  const variantsWithImage = (images ?? [])
+    .filter((r) => r.image_url)
+    .map((r) => r.variant_index as number);
+
+  const targetVariants =
+    scope === "all"
+      ? variantsWithImage
+      : variantsWithImage.includes(targetVariantIndex)
+        ? [targetVariantIndex]
+        : [];
+
+  if (targetVariants.length === 0) {
+    return {
+      ok: false,
+      error: "Keine Variante mit Bild gefunden — erst Bilder generieren.",
+    };
+  }
+
+  const templateKinds: ("staticSquare" | "animatedSquare" | "reelVertical")[] = [
+    "staticSquare",
+    "animatedSquare",
+    "reelVertical",
+  ];
+
+  // Cross-Product: variant × template → eine Render-Task pro Kombi.
+  // Alle parallel mit Promise.allSettled — Creatomate verarbeitet die parallel.
+  const tasks: Array<{ variantIndex: number; templateKind: string }> = [];
+  for (const v of targetVariants) {
+    for (const t of templateKinds) {
+      tasks.push({ variantIndex: v, templateKind: t });
+    }
+  }
+
+  const results = await Promise.allSettled(
+    tasks.map(({ variantIndex, templateKind }) => {
+      const fd = new FormData();
+      fd.set("creativeId", creativeId);
+      fd.set("variantIndex", String(variantIndex));
+      fd.set("templateKind", templateKind);
+      return startRender({ ok: false }, fd);
+    }),
+  );
+
+  let startedCount = 0;
+  let failedCount = 0;
+  const errors: string[] = [];
+  results.forEach((r, i) => {
+    const task = tasks[i];
+    if (r.status === "fulfilled" && r.value.ok) {
+      startedCount += 1;
+    } else {
+      failedCount += 1;
+      const msg =
+        r.status === "fulfilled"
+          ? r.value.error ?? "unbekannter Fehler"
+          : r.reason instanceof Error
+            ? r.reason.message
+            : String(r.reason);
+      errors.push(`V${task.variantIndex + 1} ${task.templateKind}: ${msg}`);
+    }
+  });
+
+  revalidatePath(`/dashboard/library/${creativeId}`);
+
+  return {
+    ok: startedCount > 0,
+    startedCount,
+    failedCount,
+    errors: errors.slice(0, 5), // nur die ersten 5 zeigen, sonst UI-Overflow
+    error:
+      startedCount === 0
+        ? `Alle ${failedCount} Renders fehlgeschlagen.`
+        : failedCount > 0
+          ? `${startedCount} gestartet, ${failedCount} fehlgeschlagen.`
+          : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------

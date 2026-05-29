@@ -13,7 +13,7 @@ import type { VariantImage } from "./image-actions";
 import { VariantImageBlock } from "./variant-image-block";
 import { VariantRendersBlock } from "./variant-renders-block";
 import type { RenderRecord } from "./render-actions";
-import type { TemplateKind } from "@/lib/creatomate/templates";
+import type { TemplateKind, TemplateOption } from "@/lib/creatomate/templates";
 
 const initialUpdate: UpdateState = { ok: false };
 
@@ -25,6 +25,7 @@ export function CreativeWorkspace({
   createdAt,
   promptText,
   templateAvailability,
+  templatePools,
 }: {
   id: string;
   initial: AdCopy;
@@ -33,6 +34,7 @@ export function CreativeWorkspace({
   createdAt: string;
   promptText: string;
   templateAvailability: Record<TemplateKind, boolean>;
+  templatePools: Record<TemplateKind, TemplateOption[]>;
 }) {
   const imageByVariant = new Map<number, VariantImage>();
   images.forEach((img) => imageByVariant.set(img.variantIndex, img));
@@ -60,6 +62,7 @@ export function CreativeWorkspace({
         imageByVariant={imageByVariant}
         rendersByVariant={rendersByVariant}
         templateAvailability={templateAvailability}
+        templatePools={templatePools}
       />
 
       <DangerZone id={id} />
@@ -193,12 +196,14 @@ function VariantAccordion({
   imageByVariant,
   rendersByVariant,
   templateAvailability,
+  templatePools,
 }: {
   creativeId: string;
   variants: AdCopy["variants"];
   imageByVariant: Map<number, VariantImage>;
   rendersByVariant: Map<number, RenderRecord[]>;
   templateAvailability: Record<TemplateKind, boolean>;
+  templatePools: Record<TemplateKind, TemplateOption[]>;
 }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
 
@@ -243,6 +248,7 @@ function VariantAccordion({
             image={imageByVariant.get(i) ?? null}
             renders={rendersByVariant.get(i) ?? []}
             templateAvailability={templateAvailability}
+            templatePools={templatePools}
             isOpen={expanded.has(i)}
             onToggle={() => toggle(i)}
           />
@@ -260,6 +266,7 @@ function AccordionItem({
   image,
   renders,
   templateAvailability,
+  templatePools,
   isOpen,
   onToggle,
 }: {
@@ -270,6 +277,7 @@ function AccordionItem({
   image: VariantImage | null;
   renders: RenderRecord[];
   templateAvailability: Record<TemplateKind, boolean>;
+  templatePools: Record<TemplateKind, TemplateOption[]>;
   isOpen: boolean;
   onToggle: () => void;
 }) {
@@ -346,6 +354,7 @@ function AccordionItem({
             renders={renders}
             hasImage={hasImage}
             templateAvailability={templateAvailability}
+            templatePools={templatePools}
           />
         </div>
       )}
