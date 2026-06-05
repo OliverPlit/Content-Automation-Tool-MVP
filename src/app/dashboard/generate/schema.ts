@@ -116,6 +116,11 @@ export type AngleValue = (typeof ANGLES)[number]["value"];
 export const adVariantSchema = z.object({
   body: z.string().min(1).max(150),
   cta: z.string().min(1).max(20),
+  // Per-Variant-Texte (UV-1).
+  // Optional, weil ältere Creatives die Top-Level-headline/subline teilen.
+  // Wenn gesetzt, gewinnt Variant-Wert in Render + Workspace.
+  headline: z.string().min(1).max(40).optional(),
+  subline: z.string().min(1).max(80).optional(),
 });
 
 // Strict schema — used by generateObject (OpenAI Structured Outputs verlangt
@@ -167,6 +172,9 @@ export const adCopyLooseSchema = z.object({
       z.object({
         body: z.string().min(1).max(600),
         cta: z.string().min(1).max(60),
+        // UV-1 — pro Variante eigene Texte (optional, Legacy fallbackt auf root).
+        headline: z.string().min(1).max(200).optional(),
+        subline: z.string().min(1).max(300).optional(),
       }),
     )
     .min(1)
@@ -604,6 +612,15 @@ export type GenerateInput = {
   projectId?: string;
   /** Optional Folder/Kampagne innerhalb des Projekts (F4). */
   folderId?: string;
+  /** RF-Brand — Logo der gecrawlten Firmenseite (für Render-Theme). */
+  logoUrl?: string;
+  /** RF-Brand — 4 Farb-Slots aus dem Logo, ins Folder-Brand persistiert. */
+  brandColors?: {
+    primary: string;
+    accent: string;
+    background: string;
+    text: string;
+  } | null;
 };
 
 export type GenerateState = {

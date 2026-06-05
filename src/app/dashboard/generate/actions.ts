@@ -3,7 +3,12 @@
 import { experimental_generateImage as generateImage, generateObject } from "ai";
 import { openai } from "@/lib/ai/openai-client";
 import { google, googleKeyIsValid } from "@/lib/ai/google-client";
-import { generateSceneWithProduct } from "@/lib/ai/gemini-image";
+import {
+  cropToAspect,
+  generateProductInScene,
+  generateSceneWithProduct,
+  type SceneAspect,
+} from "@/lib/ai/gemini-image";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
@@ -98,7 +103,14 @@ const inputSchema = z.object({
   imageVariantCount: z.coerce.number().int().min(1).max(4).default(1),
   urgency: z.coerce.boolean().default(false),
   productFactsJson: z.string().optional().or(z.literal("")),
+  // Einweb-Modus für Produktbilder:
+  //  realism = Modell platziert das Produkt nativ in die Szene (fotorealistisch,
+  //            Tiefenschärfe/Licht/Schatten gematcht; Label kann minimal abweichen)
+  //  exact   = pixelgenaues Composite + Relight (Label exakt, ggf. flacher)
+  embedMode: z.enum(["realism", "exact"]).default("realism"),
 });
+
+type EmbedMode = "realism" | "exact";
 
 function buildVariantPrompt(args: {
   plan: VariantPlan;
@@ -117,6 +129,7 @@ function buildVariantPrompt(args: {
   urgency: boolean;
   productFacts?: ProductFacts | null;
   metaInsights?: MetaPromptInsights;
+  sceneVariation: string;
 }): string {
   const {
     plan,
@@ -135,6 +148,7 @@ function buildVariantPrompt(args: {
     urgency,
     productFacts,
     metaInsights,
+    sceneVariation,
   } = args;
 
   const machineMeta = MACHINES.find((m) => m.value === machine)!;
@@ -372,6 +386,7 @@ LÄNGEN-VORGABEN (HART · Plattform-Standard):
   Pflicht-Elemente:
    - Authentische, NICHT-werbliche Szene — wirkt wie ein candid Phone-Shot oder Doku-Foto, NICHT wie ein Werbefoto.
    - Stil-Basis: "authentic real-world scene, available light, candid moment, natural skin texture, ${platformMeta.aspectRatio} composition for ${platformMeta.label}"${styleLine}
+   - KOMPOSITION für DIESE Variante (bewusst ANDERS als die anderen Varianten): ${sceneVariation}.
    - Pflicht-Suffix: "no text, no logos, no watermarks, no readable signage, no studio polish, no commercial advertising look, no plastic perfect surfaces, no fake bokeh, no airbrush, no stock-photo cliché"
   Kein konkreter Brand-Name. Produkt-Container generisch beschreiben (z. B. "yellow lubricant canister", "perfume bottle", "food packaging" — je nach Produkt).
 ${retrySection}
@@ -404,6 +419,7 @@ async function generateOneVariant(args: {
   urgency: boolean;
   productFacts: ProductFacts | null;
   metaInsights?: MetaPromptInsights;
+  embedMode: EmbedMode;
 }): Promise<GeneratedVariant> {
   const {
     supabase,
@@ -428,6 +444,7 @@ async function generateOneVariant(args: {
     urgency,
     productFacts,
     metaInsights,
+    embedMode,
   } = args;
 
   // 1) Copy mit Retry-Loop (Doc 3.8)
@@ -461,6 +478,10 @@ Du bist Variante ${variantNumber} von ${variantTotal}.`;
       urgency,
       productFacts,
       metaInsights,
+      sceneVariation:
+        IMAGE_SCENE_VARIATIONS[
+          (variantNumber - 1) % IMAGE_SCENE_VARIATIONS.length
+        ],
     });
 
     const { object } = await generateObject({
@@ -507,13 +528,29 @@ Du bist Variante ${variantNumber} von ${variantTotal}.`;
   // - Sonst: klassische Text-zu-Bild-Generierung.
   const styles = buildImageStyleRotation(imageStyle, imageVariantCount);
   const geminiAspect = platformToGeminiAspect(platform);
+  // Exaktes Plattform-Format (z. B. 4:5, 9:16, 1.91:1) — das Bild wird am Ende
+  // pixelgenau auf dieses Seitenverhältnis zugeschnitten, egal was das Modell
+  // zurückgibt.
+  const exactAspect = (PLATFORMS.find((p) => p.value === platform)?.aspectRatio ??
+    "1:1") as SceneAspect;
   // B2/B3 — Authentisch statt Werbefoto-Polish (Doc 6.4 + Motion 2024 +22 % CTR).
   // Wir nennen explizit Smartphone-Vokabular und verbieten "studio polish",
   // "commercial advertising look", "plastic perfect" — das sind die Phrasen,
   // die Diffusion-Modelle in den künstlichen Werbe-Modus schalten.
-  const QUALITY_SUFFIX = sharedProductImageUrl
-    ? "shot on iPhone 15 Pro back camera, natural skin texture with visible pores, candid documentary moment, real-world imperfections, available light only, slight handheld motion, photorealistic, realistic shadows on product matching the scene lighting. NEGATIVE: no text overlays, no captions, no watermarks, no studio polish, no commercial advertising look, no plastic perfect surfaces, no overly symmetric composition, no fake bokeh, no airbrush, no stock-photo cliché, no extra product duplicates, no deformed objects, no AI artifacts, no lowres."
-    : "shot on iPhone 15 Pro back camera, natural skin texture with visible pores, candid documentary moment, real-world imperfections, available light only, slight handheld motion, photorealistic. NEGATIVE: no text, no captions, no watermarks, no logos, no readable signage, no studio polish, no commercial advertising look, no plastic perfect surfaces, no overly symmetric composition, no fake bokeh, no airbrush, no stock-photo cliché, no deformed objects, no AI artifacts, no lowres.";
+  // Realismus-Modus (Default mit Produktbild): das Modell platziert das Produkt
+  // nativ in die Szene → echte Tiefenschärfe/Bokeh erlaubt (kein "no fake bokeh").
+  const NATIVE_SUFFIX =
+    "photorealistic, shot on a 50mm f/1.8 lens, shallow depth of field with the product tack-sharp and the background softly blurred (natural bokeh), warm golden-hour directional light, realistic grounded contact shadow, natural color. NEGATIVE: no studio polish, no commercial advertising look, no plastic-perfect surfaces, no extra products, no duplicate canisters, no bottles, no packaging, no text overlays, no watermarks, no deformed product, no AI artifacts, no lowres.";
+  // Exact-Modus (Composite): Szene wird ohne Produkt erzeugt, daher KEIN Bokeh.
+  const COMPOSITE_SUFFIX =
+    "shot on iPhone 15 Pro back camera, natural skin texture with visible pores, candid documentary moment, real-world imperfections, available light only, slight handheld motion, photorealistic, realistic shadows on product matching the scene lighting. NEGATIVE: no text overlays, no captions, no watermarks, no studio polish, no commercial advertising look, no plastic perfect surfaces, no overly symmetric composition, no fake bokeh, no airbrush, no stock-photo cliché, no extra product duplicates, no deformed objects, no AI artifacts, no lowres.";
+  const TEXT_SUFFIX =
+    "shot on iPhone 15 Pro back camera, natural skin texture with visible pores, candid documentary moment, real-world imperfections, available light only, slight handheld motion, photorealistic. NEGATIVE: no text, no captions, no watermarks, no logos, no readable signage, no studio polish, no commercial advertising look, no plastic perfect surfaces, no overly symmetric composition, no fake bokeh, no airbrush, no stock-photo cliché, no deformed objects, no AI artifacts, no lowres.";
+  const QUALITY_SUFFIX = !sharedProductImageUrl
+    ? TEXT_SUFFIX
+    : embedMode === "realism"
+      ? NATIVE_SUFFIX
+      : COMPOSITE_SUFFIX;
   const settled = await Promise.allSettled(
     styles.map((styleSuffix) =>
       generateAiImage(
@@ -526,6 +563,8 @@ Du bist Variante ${variantNumber} von ${variantTotal}.`;
         geminiAspect,
         sharedProductImageUrl,
         productFacts?.gebinde,
+        embedMode,
+        exactAspect,
       ),
     ),
   );
@@ -564,6 +603,33 @@ Du bist Variante ${variantNumber} von ${variantTotal}.`;
 // Reihenfolge der Bild-Stile bei imageVariantCount > 1 (Doc 4.6):
 // UGC Phone, Documentary, On-Location Raw, Golden Hour — der User-gewählte Stil
 // rückt nach vorn. Reihenfolge ist nach erwartetem CTR-Lift sortiert (Motion 2024).
+// "4:5" → 0.8 · "9:16" → 0.5625 · "1.91:1" → 1.91 (Breite/Höhe).
+function aspectToRatio(a: string): number {
+  const m = a.match(/^(\d+(?:\.\d+)?)\s*[:x]\s*(\d+(?:\.\d+)?)$/);
+  if (!m) return 1;
+  const w = parseFloat(m[1]);
+  const h = parseFloat(m[2]);
+  return h > 0 ? w / h : 1;
+}
+
+// Rotation über eine Werteliste, beginnend mit der gewählten Option, dann der
+// Rest — so bekommt jede Variante einen anderen Wert (Angle, Stil …).
+function rotateFrom<T>(chosen: T, all: readonly T[], n: number): T[] {
+  const pool = [chosen, ...all.filter((a) => a !== chosen)];
+  return Array.from({ length: n }, (_, i) => pool[i % Math.max(1, pool.length)]);
+}
+
+// Pro Variante eine andere Kamera-/Setting-Komposition, damit sich die BILDER
+// klar unterscheiden — auch bei gleichem Produkt und Stil.
+const IMAGE_SCENE_VARIATIONS: string[] = [
+  "low-angle hero shot, product close in the foreground, environment soft behind",
+  "wide establishing shot, product small-to-mid in a real working environment",
+  "over-the-shoulder / first-person POV with real hands near the product",
+  "eye-level three-quarter view, product on a natural surface, side light",
+  "top-down flat-lay style with the product among real-world objects",
+  "backlit golden-hour shot with the product as a strong silhouette-lit hero",
+];
+
 function buildImageStyleRotation(
   userStyle: ImageStyleValue,
   count: number,
@@ -635,6 +701,7 @@ export async function generateAdCopy(
     imageVariantCount: formData.get("imageVariantCount") ?? "1",
     urgency: urgencyRaw === "on" || urgencyRaw === "true" || urgencyRaw === "1",
     productFactsJson: String(formData.get("productFacts") ?? ""),
+    embedMode: formData.get("embedMode") ?? "realism",
   });
 
   if (!parsed.success) {
@@ -688,6 +755,7 @@ export async function generateAdCopy(
     imageVariantCount,
     urgency,
     productFactsJson,
+    embedMode,
   } = parsed.data;
 
   // ProductFacts aus Hidden-JSON-Field parsen (silent fail wenn invalid)
@@ -749,6 +817,35 @@ export async function generateAdCopy(
     sharedProductImageUrl = mirrored.url;
   }
 
+  // Diversität: jede Variante bekommt einen anderen Angle (Herangehensweise)
+  // und — bei Stil "auto" — einen anderen Bild-Stil. Zusammen mit dem
+  // rotierenden Hook/Framework/Lever aus dem Variant-Plan unterscheidet sich so
+  // pro Variante sowohl die Copy-Herangehensweise als auch das Bild deutlich.
+  const angleRotation = rotateFrom(
+    angle as AngleValue,
+    ANGLES.map((a) => a.value),
+    plans.length,
+  );
+  // Optionale Pro-Variante-Angle-Wahl aus dem Form (mehrfaches Feld
+  // "variantAngle", in Varianten-Reihenfolge). Leer/ungültig → Auto-Rotation.
+  const variantAnglesRaw = formData.getAll("variantAngle").map((x) => String(x));
+  const angleForVariant = (i: number): AngleValue => {
+    const chosen = variantAnglesRaw[i] ?? "";
+    return ANGLES.some((a) => a.value === chosen)
+      ? (chosen as AngleValue)
+      : angleRotation[i];
+  };
+  const realStyles = IMAGE_STYLES.map((s) => s.value).filter(
+    (v) => v !== "auto",
+  ) as ImageStyleValue[];
+  const styleRotation: ImageStyleValue[] =
+    imageStyle === "auto"
+      ? Array.from(
+          { length: plans.length },
+          (_, i) => realStyles[i % realStyles.length],
+        )
+      : Array.from({ length: plans.length }, () => imageStyle as ImageStyleValue);
+
   // Parallel ausführen — jede Variante = 1 Copy-Call + ggf. 1 Bild-Call.
   const settled = await Promise.allSettled(
     plans.map((plan, i) =>
@@ -763,9 +860,9 @@ export async function generateAdCopy(
         audience,
         tone,
         machine,
-        angle,
+        angle: angleForVariant(i),
         websiteText: cleanedWebsite,
-        imageStyle,
+        imageStyle: styleRotation[i],
         sharedProductImageUrl,
         frame: frame as FrameValue,
         addressing: addressing as AddressingValue,
@@ -775,6 +872,7 @@ export async function generateAdCopy(
         urgency,
         productFacts,
         metaInsights,
+        embedMode: embedMode as EmbedMode,
       }),
     ),
   );
@@ -810,6 +908,30 @@ export async function generateAdCopy(
   const folderId =
     folderIdRaw.length > 0 && uuidRe.test(folderIdRaw) ? folderIdRaw : undefined;
 
+  // RF-Brand — Logo + Farben aus dem Crawl ins input weiterreichen, damit
+  // die VariantCards / BundleSave sie als Hidden-Inputs an die Save-Action
+  // übergeben können.
+  const logoUrlRaw = String(formData.get("logoUrl") ?? "").trim();
+  const logoUrl = /^https?:\/\//i.test(logoUrlRaw) ? logoUrlRaw : undefined;
+  let brandColors: GenerateInput["brandColors"] = null;
+  const brandColorsRaw = String(formData.get("brandColors") ?? "");
+  if (brandColorsRaw) {
+    try {
+      const parsed = JSON.parse(brandColorsRaw) as Record<string, unknown>;
+      const hex = (v: unknown) =>
+        typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? v : null;
+      const p = hex(parsed.primary);
+      const a = hex(parsed.accent);
+      const b = hex(parsed.background);
+      const t = hex(parsed.text);
+      if (p && a && b && t) {
+        brandColors = { primary: p, accent: a, background: b, text: t };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const input: GenerateInput = {
     product,
     audience,
@@ -834,6 +956,8 @@ export async function generateAdCopy(
     urgency,
     projectId,
     folderId,
+    logoUrl,
+    brandColors,
   };
 
   return {
@@ -877,6 +1001,8 @@ async function generateAiImage(
   aspect: GeminiAspect = "1:1",
   productImageUrl?: string,
   gebinde?: string,
+  embedMode: EmbedMode = "realism",
+  exactAspect: SceneAspect = "1:1",
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   // Nur Google Gemini 2.5 Flash Image ("Nano Banana"). Kein Fallback.
   if (!googleKeyIsValid) {
@@ -891,12 +1017,40 @@ async function generateAiImage(
     let mediaType: string;
 
     if (productImageUrl) {
-      // Multi-Image-Edit: Produktbild als Referenz, native Komposition.
-      // gebinde wird durchgereicht → Nano Banana kennt die reale Skala.
-      const result = await generateSceneWithProduct(prompt, productImageUrl, gebinde);
-      if (!result.ok) return { ok: false, error: result.error };
-      bytes = result.bytes;
-      mediaType = result.mediaType;
+      if (embedMode === "realism") {
+        // REALISMUS-Modus (Default): Modell platziert das Produkt nativ in die
+        // Szene (fotorealistisch, Tiefenschärfe/Licht/Schatten gematcht).
+        let result = await generateProductInScene(
+          prompt,
+          productImageUrl,
+          gebinde,
+          exactAspect,
+        );
+        if (!result.ok) {
+          // Fallback: pixelgenaues Composite + Relight (Label exakt).
+          result = await generateSceneWithProduct(
+            prompt,
+            productImageUrl,
+            gebinde,
+            exactAspect,
+          );
+        }
+        if (!result.ok) return { ok: false, error: result.error };
+        bytes = result.bytes;
+        mediaType = result.mediaType;
+      } else {
+        // EXACT-Modus: Szene ohne Produkt + sharp-Composite + Relight. Das
+        // Produkt bleibt pixelgenau (Label exakt), wirkt aber ggf. flacher.
+        const result = await generateSceneWithProduct(
+          prompt,
+          productImageUrl,
+          gebinde,
+          exactAspect,
+        );
+        if (!result.ok) return { ok: false, error: result.error };
+        bytes = result.bytes;
+        mediaType = result.mediaType;
+      }
     } else {
       // Klassischer Text-zu-Bild-Pfad (kein Produktbild).
       const { image } = await generateImage({
@@ -907,6 +1061,10 @@ async function generateAiImage(
       bytes = image.uint8Array;
       mediaType = image.mediaType || "image/png";
     }
+
+    // Garantiert das exakt gewählte Plattform-Format: zentriert auf das Ziel-
+    // Seitenverhältnis zuschneiden (no-op, falls schon korrekt).
+    bytes = await cropToAspect(bytes, aspectToRatio(exactAspect));
 
     const ext = mediaType.includes("png") ? "png" : "jpg";
     const path = `${userId}/preview/${Date.now()}-${Math.random()
@@ -993,6 +1151,14 @@ async function mirrorExternalImage(
 // ---------------------------------------------------------------------------
 // saveCreative — eine einzelne Variante in die Library packen
 // ---------------------------------------------------------------------------
+// RF-Brand: gemeinsames Hex-Color-Schema für saveCreative + saveAllVariants
+const brandColorsZ = z.object({
+  primary: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  background: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  text: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+});
+
 const savePayloadSchema = z.object({
   product: z.string().min(1).max(500),
   audience: z.string().min(1).max(300),
@@ -1011,6 +1177,9 @@ const savePayloadSchema = z.object({
   projectId: z.string().uuid().optional().or(z.literal("")),
   // F4: optional Folder — leer/ungültig → folder_id NULL
   folderId: z.string().uuid().optional().or(z.literal("")),
+  // RF-Brand: optionaler Brand-Style aus dem Crawl
+  brandColorsJson: z.string().optional().or(z.literal("")),
+  logoUrl: z.string().optional().or(z.literal("")),
 });
 
 export async function saveCreative(
@@ -1033,6 +1202,8 @@ export async function saveCreative(
     productImageUrl: formData.get("productImageUrl") ?? "",
     projectId: formData.get("projectId") ?? "",
     folderId: formData.get("folderId") ?? "",
+    brandColorsJson: formData.get("brandColors") ?? "",
+    logoUrl: formData.get("logoUrl") ?? "",
   });
   if (!parsed.success) {
     return {
@@ -1065,12 +1236,26 @@ export async function saveCreative(
     productImageUrl,
     projectId,
     folderId,
+    brandColorsJson,
+    logoUrl: logoUrlIn,
   } = parsed.data;
+
+  // RF-Brand: Folder-Brand füllen, wenn noch leer
+  if (folderId && brandColorsJson) {
+    try {
+      const colors = brandColorsZ.parse(JSON.parse(brandColorsJson));
+      await applyFolderBrandIfEmpty(folderId, colors, logoUrlIn || "");
+    } catch {
+      // soft-fail
+    }
+  }
 
   const adCopy = adCopySchema.parse({
     headline,
     subline,
-    variants: [{ body, cta }],
+    // Per-Variante-Texte AUCH in variants[0] schreiben (nicht nur root), damit
+    // jedes gespeicherte Creative seine eigene Headline/Subline explizit trägt.
+    variants: [{ body, cta, headline, subline }],
     imagePrompt: imagePrompt || "no-prompt",
   });
 
@@ -1170,6 +1355,9 @@ const bundleVariantSchema = z.object({
   index: z.coerce.number().int().min(1).max(10),
   body: z.string().min(1).max(300),
   cta: z.string().min(1).max(30),
+  // UV-2 — Per-Variant-Texte (optional, Legacy fällt auf root zurück).
+  headline: z.string().min(1).max(200).optional().or(z.literal("")),
+  subline: z.string().min(1).max(300).optional().or(z.literal("")),
   imagePrompt: z.string().max(800).optional().or(z.literal("")),
   previewImageUrl: z.string().url().optional().or(z.literal("")),
   productImageUrl: z.string().url().optional().or(z.literal("")),
@@ -1186,6 +1374,8 @@ const bundlePayloadSchema = z.object({
   variants: z.array(bundleVariantSchema).min(1).max(10),
   projectId: z.string().uuid().optional().or(z.literal("")),
   folderId: z.string().uuid().optional().or(z.literal("")),
+  brandColorsJson: z.string().optional().or(z.literal("")),
+  logoUrl: z.string().optional().or(z.literal("")),
 });
 
 export async function saveAllVariants(
@@ -1214,6 +1404,8 @@ export async function saveAllVariants(
     variants: variantsRaw,
     projectId: formData.get("projectId") ?? "",
     folderId: formData.get("folderId") ?? "",
+    brandColorsJson: formData.get("brandColors") ?? "",
+    logoUrl: formData.get("logoUrl") ?? "",
   });
   if (!parsed.success) {
     return {
@@ -1241,13 +1433,35 @@ export async function saveAllVariants(
     variants,
     projectId,
     folderId,
+    brandColorsJson,
+    logoUrl: logoUrlIn,
   } = parsed.data;
 
-  // adCopy-JSON mit ALLEN Varianten zusammen
+  // RF-Brand: Folder-Brand mit den Crawl-Farben befüllen, falls Folder
+  // gewählt ist und dort noch keine Werte stehen. „Schon gesetzt"
+  // gewinnt — der User-Override bleibt erhalten.
+  if (folderId && brandColorsJson) {
+    try {
+      const colors = brandColorsZ.parse(JSON.parse(brandColorsJson));
+      await applyFolderBrandIfEmpty(folderId, colors, logoUrlIn || "");
+    } catch {
+      // Brand-Update ist soft-fail — Bundle-Save soll nicht failen.
+    }
+  }
+
+  // adCopy-JSON mit ALLEN Varianten zusammen.
+  // UV-2: Per-Variant-Headlines mitschreiben. Wenn die Variante keinen
+  // eigenen Wert hat, lassen wir das Feld weg → Loose-Schema beim Lesen
+  // fällt auf root zurück.
   const adCopy = adCopySchema.parse({
     headline,
     subline,
-    variants: variants.map((v) => ({ body: v.body, cta: v.cta })),
+    variants: variants.map((v) => ({
+      body: v.body,
+      cta: v.cta,
+      headline: v.headline && v.headline.length > 0 ? v.headline : undefined,
+      subline: v.subline && v.subline.length > 0 ? v.subline : undefined,
+    })),
     imagePrompt: variants[0].imagePrompt || "no-prompt",
   });
 
@@ -1422,6 +1636,56 @@ export async function rateVariant(
     variantIndex,
     rating: rating as 1 | -1,
   };
+}
+
+// RF-Brand: schreibt die extrahierten Brand-Farben + das Logo in den Folder,
+// solange der Folder noch keine eigenen Werte hat. Spalten werden einzeln
+// betrachtet — wenn der User z. B. nur `brand_primary_color` manuell gesetzt
+// hat, bleibt der erhalten, die anderen 3 werden befüllt.
+async function applyFolderBrandIfEmpty(
+  folderId: string,
+  colors: {
+    primary: string;
+    accent: string;
+    background: string;
+    text: string;
+  },
+  logoUrl: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { data: row } = await supabase
+    .from("project_folders")
+    .select(
+      "brand_primary_color, brand_accent_color, brand_background_color, brand_text_color",
+    )
+    .eq("id", folderId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!row) return;
+
+  const r = row as {
+    brand_primary_color: string | null;
+    brand_accent_color: string | null;
+    brand_background_color: string | null;
+    brand_text_color: string | null;
+  };
+  const patch: Record<string, string> = {};
+  if (!r.brand_primary_color) patch.brand_primary_color = colors.primary;
+  if (!r.brand_accent_color) patch.brand_accent_color = colors.accent;
+  if (!r.brand_background_color) patch.brand_background_color = colors.background;
+  if (!r.brand_text_color) patch.brand_text_color = colors.text;
+  // logoUrl wird nicht persistiert (kein Folder-Feld dafür) — die UI behält
+  // ihn im localStorage; Renders verwenden ihn aktuell nicht. Variable wird
+  // bewusst angenommen, damit die Public-Schnittstelle stabil bleibt.
+  void logoUrl;
+
+  if (Object.keys(patch).length === 0) return;
+  await supabase.from("project_folders").update(patch).eq("id", folderId).eq("user_id", user.id);
 }
 
 // Hilfsfunktion (server-only): User-Hook-Präferenzen aus creative_feedback.

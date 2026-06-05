@@ -39,6 +39,10 @@ const variantSchema = z.object({
   variantIndex: z.number().int().min(0).max(9),
   body: z.string().min(1).max(600),
   cta: z.string().min(1).max(60),
+  // UV-4 — optional pro Variante. Leer-String = vom User absichtlich
+  // leergeräumt → wir behandeln das wie „nicht gesetzt" (Fallback auf root).
+  headline: z.string().max(200).optional().or(z.literal("")),
+  subline: z.string().max(300).optional().or(z.literal("")),
 });
 
 async function loadAdCopy(supabase: Awaited<ReturnType<typeof createClient>>, id: string) {
@@ -179,6 +183,8 @@ export async function updateVariant(
     variantIndex: Number(formData.get("variantIndex")),
     body: formData.get("body"),
     cta: formData.get("cta"),
+    headline: formData.get("headline") ?? "",
+    subline: formData.get("subline") ?? "",
   });
   if (!parsed.success) {
     return {
@@ -195,9 +201,22 @@ export async function updateVariant(
   const current = await loadAdCopy(supabase, parsed.data.id);
   if (!current.ok) return { ok: false, error: current.error };
 
+  // UV-4: headline/subline pro Variante persistieren.
+  // Leer-Strings raus, sonst kollidiert das beim Lesen mit Loose-Fallback.
+  const newHeadline = parsed.data.headline?.trim();
+  const newSubline = parsed.data.subline?.trim();
   const variants = current.output.variants.map((v, i) =>
     i === parsed.data.variantIndex
-      ? { body: parsed.data.body, cta: parsed.data.cta }
+      ? {
+          body: parsed.data.body,
+          cta: parsed.data.cta,
+          ...(newHeadline && newHeadline.length > 0
+            ? { headline: newHeadline }
+            : {}),
+          ...(newSubline && newSubline.length > 0
+            ? { subline: newSubline }
+            : {}),
+        }
       : v,
   );
 

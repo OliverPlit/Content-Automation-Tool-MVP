@@ -19,6 +19,7 @@ const initialUpdate: UpdateState = { ok: false };
 
 export function CreativeWorkspace({
   id,
+  projectId = null,
   initial,
   images,
   renders,
@@ -28,6 +29,9 @@ export function CreativeWorkspace({
   templatePools,
 }: {
   id: string;
+  /** Projekt-Zuordnung des Creatives — steuert die Plan-Sichtbarkeit im
+   *  Renders-Block („Bereit zum Posten"). */
+  projectId?: string | null;
   initial: AdCopy;
   images: VariantImage[];
   renders: RenderRecord[];
@@ -58,6 +62,9 @@ export function CreativeWorkspace({
 
       <VariantAccordion
         creativeId={id}
+        projectId={projectId}
+        headline={initial.headline}
+        subline={initial.subline}
         variants={initial.variants}
         imageByVariant={imageByVariant}
         rendersByVariant={rendersByVariant}
@@ -90,7 +97,7 @@ function HeaderCard({
   const [state, formAction, pending] = useActionState(updateHeader, initialUpdate);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-blue-900/5">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-900/5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           {editing ? (
@@ -123,7 +130,7 @@ function HeaderCard({
                 />
               </div>
               {state.error && (
-                <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+                <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
                   {state.error}
                 </p>
               )}
@@ -131,7 +138,7 @@ function HeaderCard({
                 <button
                   type="submit"
                   disabled={pending}
-                  className="rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                  className="rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-slate-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
                   {pending ? "Speichere…" : "Speichern"}
                 </button>
@@ -184,14 +191,15 @@ function HeaderCard({
 }
 
 // ---------------------------------------------------------------------------
-// Variant tabs
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// VariantAccordion — Alle Varianten als kollabierbare Karten.
-// Default: V1 offen, andere zu. Mehrere können gleichzeitig offen sein.
+// VariantAccordion → Variant-Tabs (P2-3).
+// Nur EINE Variante voll sichtbar. Tabs [V1] [V2] [V3] oben wechseln.
+// Default: V1 aktiv. Markiert ob Bild/Render vorhanden.
 // ---------------------------------------------------------------------------
 function VariantAccordion({
   creativeId,
+  projectId,
+  headline,
+  subline,
   variants,
   imageByVariant,
   rendersByVariant,
@@ -199,177 +207,131 @@ function VariantAccordion({
   templatePools,
 }: {
   creativeId: string;
+  projectId: string | null;
+  headline: string;
+  subline: string;
   variants: AdCopy["variants"];
   imageByVariant: Map<number, VariantImage>;
   rendersByVariant: Map<number, RenderRecord[]>;
   templateAvailability: Record<TemplateKind, boolean>;
   templatePools: Record<TemplateKind, TemplateOption[]>;
 }) {
-  const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
-
-  const toggle = (i: number) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      return next;
-    });
-
-  const expandAll = () =>
-    setExpanded(new Set(variants.map((_, i) => i)));
-  const collapseAll = () => setExpanded(new Set());
-
-  const openCount = expanded.size;
-  const allOpen = openCount === variants.length;
+  const [active, setActive] = useState<number>(0);
+  const safeActive = active < variants.length ? active : 0;
+  const currentVariant = variants[safeActive];
+  const currentImage = imageByVariant.get(safeActive) ?? null;
+  const currentRenders = rendersByVariant.get(safeActive) ?? [];
 
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-blue-900">
+        <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
           Varianten ({variants.length})
-        </h2>
-        <button
-          type="button"
-          onClick={allOpen ? collapseAll : expandAll}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-        >
-          {allOpen ? "⊟ Alle einklappen" : "⊞ Alle aufklappen"}
-        </button>
+        </p>
       </div>
 
-      <div className="space-y-2">
-        {variants.map((v, i) => (
-          <AccordionItem
-            key={i}
-            creativeId={creativeId}
-            index={i}
-            body={v.body}
-            cta={v.cta}
-            image={imageByVariant.get(i) ?? null}
-            renders={rendersByVariant.get(i) ?? []}
-            templateAvailability={templateAvailability}
-            templatePools={templatePools}
-            isOpen={expanded.has(i)}
-            onToggle={() => toggle(i)}
-          />
-        ))}
+      {/* Variant-Tab-Pills */}
+      <div className="flex flex-wrap gap-1.5">
+        {variants.map((_, i) => {
+          const isActive = i === safeActive;
+          const hasImage = imageByVariant.has(i);
+          const hasRender = (rendersByVariant.get(i) ?? []).some(
+            (r) => r.status === "succeeded",
+          );
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setActive(i)}
+              className={
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors " +
+                (isActive
+                  ? "bg-[var(--foreground)] text-white"
+                  : "bg-[var(--color-surface)] text-[var(--foreground)] hover:bg-[var(--color-line)]")
+              }
+            >
+              V{i + 1}
+              <span className="flex items-center gap-0.5">
+                <Dot active={hasImage} dim={!isActive} />
+                <Dot active={hasRender} dim={!isActive} />
+              </span>
+            </button>
+          );
+        })}
       </div>
-    </section>
-  );
-}
 
-function AccordionItem({
-  creativeId,
-  index,
-  body,
-  cta,
-  image,
-  renders,
-  templateAvailability,
-  templatePools,
-  isOpen,
-  onToggle,
-}: {
-  creativeId: string;
-  index: number;
-  body: string;
-  cta: string;
-  image: VariantImage | null;
-  renders: RenderRecord[];
-  templateAvailability: Record<TemplateKind, boolean>;
-  templatePools: Record<TemplateKind, TemplateOption[]>;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  const hasImage = !!image;
-  const hasRender = renders.some((r) => r.status === "succeeded");
-  const renderCount = renders.filter((r) => r.status === "succeeded").length;
-  const dotColor = hasRender ? "indigo" : hasImage ? "emerald" : "gray";
-
-  return (
-    <article
-      className={
-        "overflow-hidden rounded-2xl border bg-white shadow-md shadow-blue-900/5 transition-all " +
-        (isOpen
-          ? "border-blue-300 ring-1 ring-blue-200"
-          : "border-slate-200 hover:border-blue-200")
-      }
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={isOpen}
-        className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-blue-50/40"
-      >
-        <span
-          className={
-            "inline-flex h-5 w-5 shrink-0 items-center justify-center text-sm text-slate-400 transition-transform " +
-            (isOpen ? "rotate-90 text-blue-700" : "")
-          }
-          aria-hidden
-        >
-          ▶
-        </span>
-        <Dot color={dotColor} />
-        <span className="font-bold text-slate-900">V{index + 1}</span>
-        <span className="truncate text-sm font-semibold text-blue-800">
-          {cta || <em className="text-slate-400">kein CTA</em>}
-        </span>
-        <span className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-          {hasImage && (
-            <span
-              title="Bild vorhanden"
-              className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 ring-1 ring-emerald-200"
-            >
-              🖼️ Bild
-            </span>
-          )}
-          {renderCount > 0 && (
-            <span
-              title={`${renderCount} Render${renderCount === 1 ? "" : "s"}`}
-              className="rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-800 ring-1 ring-blue-200"
-            >
-              🎬 {renderCount}
-            </span>
-          )}
-        </span>
-      </button>
-
-      {isOpen && (
-        <div className="space-y-4 border-t border-slate-200 bg-gradient-to-b from-slate-50/60 to-white p-4">
+      {/* Aktive Variante voll sichtbar */}
+      {currentVariant && (
+        <div className="space-y-4">
           <VariantEditCard
             creativeId={creativeId}
-            index={index}
-            body={body}
-            cta={cta}
+            index={safeActive}
+            body={currentVariant.body}
+            cta={currentVariant.cta}
+            // UV-4: Per-Variant-Texte mit Fallback auf root (Legacy-Creatives)
+            headline={
+              (currentVariant as { headline?: string }).headline ?? headline
+            }
+            subline={
+              (currentVariant as { subline?: string }).subline ?? subline
+            }
+            rootHeadline={headline}
+            rootSubline={subline}
           />
           <VariantImageBlock
             creativeId={creativeId}
-            variantIndex={index}
-            image={image}
+            variantIndex={safeActive}
+            image={currentImage}
           />
           <VariantRendersBlock
             creativeId={creativeId}
-            variantIndex={index}
-            renders={renders}
-            hasImage={hasImage}
+            projectId={projectId}
+            variantIndex={safeActive}
+            renders={currentRenders}
+            hasImage={!!currentImage}
+            previewImageUrl={currentImage?.imageUrl ?? null}
+            // Preview im Render-Tab nutzt die per-variant Werte
+            headline={
+              (currentVariant as { headline?: string }).headline ?? headline
+            }
+            subline={
+              (currentVariant as { subline?: string }).subline ?? subline
+            }
+            cta={currentVariant.cta}
             templateAvailability={templateAvailability}
             templatePools={templatePools}
           />
         </div>
       )}
-    </article>
+    </section>
   );
 }
 
-function Dot({ color }: { color: "indigo" | "emerald" | "gray" }) {
-  const cls =
-    color === "indigo"
-      ? "bg-sky-400 ring-2 ring-sky-200"
-      : color === "emerald"
-        ? "bg-emerald-500"
-        : "bg-slate-300";
-  return <span className={`block h-2 w-2 rounded-full ${cls}`} />;
+/**
+ * Dot — Markiert ob Variante Bild bzw. Render hat.
+ * onDark: true für aktiven schwarzen Tab-Pill → weißer Dot
+ */
+function Dot({ active, dim = false }: { active: boolean; dim?: boolean }) {
+  // dim=true bedeutet inaktiver Tab → grau auf hellem Hintergrund
+  // dim=false bedeutet aktiver Tab (schwarz) → weiß auf schwarzem Hintergrund
+  if (dim) {
+    return (
+      <span
+        className={
+          "block h-1.5 w-1.5 rounded-full " +
+          (active ? "bg-[var(--foreground)]" : "bg-[var(--color-line)]")
+        }
+      />
+    );
+  }
+  return (
+    <span
+      className={
+        "block h-1.5 w-1.5 rounded-full " +
+        (active ? "bg-white" : "bg-white/30")
+      }
+    />
+  );
 }
 
 function VariantEditCard({
@@ -377,18 +339,33 @@ function VariantEditCard({
   index,
   body,
   cta,
+  headline,
+  subline,
+  rootHeadline,
+  rootSubline,
 }: {
   creativeId: string;
   index: number;
   body: string;
   cta: string;
+  headline: string;
+  subline: string;
+  /** Root-Werte (zum Anzeigen, dass es ein Fallback ist wenn variant leer) */
+  rootHeadline: string;
+  rootSubline: string;
 }) {
   const [state, formAction, pending] = useActionState(updateVariant, initialUpdate);
+
+  // UV-4: zeigt der User, ob die aktuellen Texte variant-eigen oder Fallback
+  // sind. Hilft beim Verständnis: „warum sind 3 Varianten identisch?" →
+  // weil sie alle vom root erben.
+  const headlineIsFallback = headline === rootHeadline && !headline;
+  const sublineIsFallback = subline === rootSubline && !subline;
 
   return (
     <form
       action={formAction}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-blue-900/5"
+      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-900/5"
     >
       <input type="hidden" name="id" value={creativeId} />
       <input type="hidden" name="variantIndex" value={index} />
@@ -401,6 +378,42 @@ function VariantEditCard({
       </div>
 
       <div className="mt-4 space-y-3">
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+            Headline
+            {headlineIsFallback && (
+              <span className="ml-1 text-[10px] font-normal normal-case text-[var(--color-muted)]">
+                · (geteilt mit allen Varianten)
+              </span>
+            )}
+          </label>
+          <input
+            name="headline"
+            type="text"
+            maxLength={200}
+            defaultValue={headline}
+            placeholder={rootHeadline}
+            className={inputCls + " mt-1"}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+            Subline
+            {sublineIsFallback && (
+              <span className="ml-1 text-[10px] font-normal normal-case text-[var(--color-muted)]">
+                · (geteilt mit allen Varianten)
+              </span>
+            )}
+          </label>
+          <input
+            name="subline"
+            type="text"
+            maxLength={300}
+            defaultValue={subline}
+            placeholder={rootSubline}
+            className={inputCls + " mt-1"}
+          />
+        </div>
         <div>
           <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
             Body
@@ -430,12 +443,12 @@ function VariantEditCard({
       </div>
 
       {state.error && (
-        <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
           {state.error}
         </p>
       )}
       {state.ok && state.message && (
-        <p className="mt-3 rounded-md bg-green-50 px-3 py-2 text-xs text-green-700">
+        <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
           {state.message}
         </p>
       )}
@@ -444,7 +457,7 @@ function VariantEditCard({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+          className="rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-slate-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
         >
           {pending ? "Speichere…" : "Variante speichern"}
         </button>
@@ -459,11 +472,11 @@ function VariantEditCard({
 function DangerZone({ id }: { id: string }) {
   const [confirming, setConfirming] = useState(false);
   return (
-    <section className="rounded-xl border border-red-200 bg-red-50 p-4">
+    <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-red-900">Gefahrenzone</p>
-          <p className="text-xs text-red-700">
+          <p className="text-sm font-medium text-slate-900">Gefahrenzone</p>
+          <p className="text-xs text-slate-700">
             Löschen entfernt das Creative inkl. aller Varianten, Bilder und
             Renders.
           </p>
@@ -472,7 +485,7 @@ function DangerZone({ id }: { id: string }) {
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
           >
             Creative löschen
           </button>
@@ -489,7 +502,7 @@ function DangerZone({ id }: { id: string }) {
               <input type="hidden" name="id" value={id} />
               <button
                 type="submit"
-                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
+                className="rounded-md bg-slate-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-500"
               >
                 Endgültig löschen
               </button>
@@ -502,4 +515,4 @@ function DangerZone({ id }: { id: string }) {
 }
 
 const inputCls =
-  "block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700";
+  "block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700";

@@ -8,8 +8,11 @@ import { adCopyLooseSchema } from "../../generate/schema";
 import {
   TEMPLATE_META,
   diagnoseSlot,
+  findSharedTemplateIds,
   getDefaultSlot,
+  getEnvVarsForKind,
   getTemplateBySlot,
+  type TemplateKind,
 } from "@/lib/creatomate/templates";
 
 const CREATOMATE_API_BASE = "https://api.creatomate.com/v1";
@@ -30,26 +33,71 @@ export type PollResult = {
 export type RenderRecord = {
   id: string;
   variantIndex: number;
-  templateKind: "staticSquare" | "animatedSquare" | "reelVertical";
+  templateKind: import("@/lib/creatomate/templates").TemplateKind;
   templateSlot: string | null;
   status: "pending" | "processing" | "succeeded" | "failed";
   outputUrl: string | null;
   errorMessage: string | null;
+  // Workflow-Felder (auch in /projects/[id] Plan-Board genutzt)
+  postStatus?:
+    | "draft"
+    | "review"
+    | "approved"
+    | "scheduled"
+    | "live"
+    | "paused"
+    | "archived";
+  scheduledAt?: string | null;
+  targetPlatform?: string | null;
+  notes?: string | null;
+  /** SV-1: null = nicht in Drafts. Timestamp = User hat aktiv „Speichern" geklickt. */
+  savedAt?: string | null;
 };
 
-const templateKindSchema = z.enum([
-  "staticSquare",
-  "animatedSquare",
-  "reelVertical",
-]);
+export type SaveRenderState = {
+  ok: boolean;
+  error?: string;
+};
+
+// Source of Truth = TEMPLATE_META. Sobald ein neuer Kind dort dazukommt
+// (z.B. RF1 → static_1x1, static_4x5, static_16x9, reel_1x1, reel_16x9),
+// akzeptiert ihn dieses Schema automatisch. Vorher: hartes Enum mit nur 3
+// Kinds → User wählte einen neuen Kind im Dropdown, Server rejected mit
+// "Template-Typ unbekannt." und der Render-Insert kam nie an.
+const TEMPLATE_KIND_VALUES = Object.keys(TEMPLATE_META) as [
+  TemplateKind,
+  ...TemplateKind[],
+];
+const templateKindSchema = z.enum(TEMPLATE_KIND_VALUES);
 
 // ---------------------------------------------------------------------------
 // startRender
 // ---------------------------------------------------------------------------
+// Diagnose-Helper. Schreibt prefixed in den Server-Terminal (npm run dev)
+// damit man sofort sieht WO genau es bricht — und gibt das Error-Objekt
+// zurück, das die UI dann anzeigt.
+const log = (msg: string) => console.log(`[startRender] ${msg}`);
+const fail = (reason: string) => {
+  console.error(`[startRender] FAIL — ${reason}`);
+  return { ok: false as const, error: reason };
+};
+
 export async function startRender(
   _prev: RenderState,
   formData: FormData,
 ): Promise<RenderState> {
+  try {
+    return await startRenderInner(formData);
+  } catch (err) {
+    // Unhandled Exceptions sichtbar machen — sonst landen sie als
+    // generischer Next-500-Stack in den Server-Logs ohne UI-Feedback.
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error(`[startRender] UNCAUGHT EXCEPTION:`, err);
+    return { ok: false, error: `Unerwarteter Fehler: ${msg}` };
+  }
+}
+
+async function startRenderInner(formData: FormData): Promise<RenderState> {
   const creativeId = String(formData.get("creativeId") ?? "");
   const variantIndexRaw = Number(formData.get("variantIndex"));
   const variantIndex =
@@ -58,51 +106,77 @@ export async function startRender(
     variantIndexRaw < 5
       ? variantIndexRaw
       : -1;
-  const templateKindParsed = templateKindSchema.safeParse(
-    formData.get("templateKind"),
-  );
+  const templateKindRaw = formData.get("templateKind");
+  const templateKindParsed = templateKindSchema.safeParse(templateKindRaw);
   const templateSlotInput = String(formData.get("templateSlot") ?? "").trim();
 
-  if (!creativeId) return { ok: false, error: "Creative-ID fehlt." };
+  log(
+    `incoming: creativeId=${creativeId.slice(0, 8)} variantIndex=${variantIndex} ` +
+      `templateKind=${String(templateKindRaw)} templateSlot=${templateSlotInput || "(empty)"}`,
+  );
+
+  if (!creativeId) return fail("Creative-ID fehlt.");
   if (variantIndex < 0)
-    return { ok: false, error: "Varianten-Index ungültig." };
+    return fail(`Varianten-Index ungültig (raw=${variantIndexRaw}).`);
   if (!templateKindParsed.success)
-    return { ok: false, error: "Template-Typ unbekannt." };
+    return fail(
+      `Template-Typ unbekannt: "${String(templateKindRaw)}". ` +
+        `Erlaubt: ${TEMPLATE_KIND_VALUES.join(", ")}.`,
+    );
 
   const templateKind = templateKindParsed.data;
   const template = TEMPLATE_META[templateKind];
 
   // Slot bestimmen: explizite User-Wahl > Default des Kinds.
   const slot = templateSlotInput || getDefaultSlot(templateKind);
+  log(`resolved slot=${slot ?? "(null)"}`);
   if (!slot) {
-    return {
-      ok: false,
-      error: `Kein Template für "${template.label}" konfiguriert — alle Slots ohne Env-Var. Lege z.B. CREATOMATE_TEMPLATE_STATIC_SQUARE in .env.local und/oder Vercel an.`,
-    };
+    const envVars = getEnvVarsForKind(templateKind);
+    return fail(
+      `Kein Template für "${template.label}" konfiguriert — keine der ` +
+        `Env-Vars ist gesetzt: ${envVars.join(", ")}. ` +
+        `Trage in .env.local (und Vercel) eine Creatomate-Template-UUID ein, ` +
+        `z.B.: ${envVars[0]}=<UUID aus Creatomate-Dashboard>`,
+    );
   }
   const resolved = getTemplateBySlot(slot);
   if (!resolved) {
-    // Detail-Diagnose: warum ist der Slot nicht auflösbar?
     const diag = diagnoseSlot(slot);
-    return { ok: false, error: diag.hint };
+    return fail(diag.hint);
   }
   if (resolved.kind !== templateKind) {
-    return {
-      ok: false,
-      error: `Template-Slot "${slot}" gehört zu Kind "${resolved.kind}", nicht zu "${templateKind}". Wahrscheinlich aus dem falschen Dropdown gewählt.`,
-    };
+    return fail(
+      `Template-Slot "${slot}" gehört zu Kind "${resolved.kind}", nicht zu "${templateKind}". Wahrscheinlich aus dem falschen Dropdown gewählt.`,
+    );
   }
   const templateId = resolved.creatomateId;
+  log(`template_id=${templateId.slice(0, 8)}… kind-OK`);
+
+  // Info-Logging: dieselbe UUID in mehreren Env-Vars ist verdächtig, aber
+  // OK fürs Testen mit einem einzigen Creatomate-Template. Nur warnen,
+  // nicht blockieren.
+  const shared = findSharedTemplateIds().find((g) => g.uuid === templateId);
+  if (shared && shared.slots.length > 1) {
+    const otherEnvVars = shared.slots
+      .filter((s) => s.slot !== slot)
+      .map((s) => s.envVar);
+    console.warn(
+      `[startRender] HINWEIS: Diese UUID wird auch von ${shared.slots.length - 1} anderen ` +
+        `Env-Vars genutzt (${otherEnvVars.slice(0, 3).join(", ")}${otherEnvVars.length > 3 ? ", …" : ""}). ` +
+        `Beim Rendern eines anderen Formats kommt deshalb DASSELBE Bild raus. ` +
+        `Für echte Format-Unterschiede pro Format ein eigenes Creatomate-Template anlegen.`,
+    );
+  }
 
   if (!process.env.CREATOMATE_API_KEY) {
-    return { ok: false, error: "CREATOMATE_API_KEY fehlt in der Env." };
+    return fail("CREATOMATE_API_KEY fehlt in der Env.");
   }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Nicht eingeloggt." };
+  if (!user) return fail("Nicht eingeloggt.");
 
   // 1) Lade Creative + Bild der Variante
   const [{ data: creativeRow, error: creativeErr }, { data: imageRow }] =
@@ -114,13 +188,13 @@ export async function startRender(
         .single(),
       supabase
         .from("creative_images")
-        .select("image_url, product_image_url")
+        .select("image_url")
         .eq("creative_id", creativeId)
         .eq("variant_index", variantIndex)
         .maybeSingle(),
     ]);
   if (creativeErr || !creativeRow)
-    return { ok: false, error: "Creative nicht gefunden." };
+    return fail(`Creative nicht gefunden. ${creativeErr?.message ?? ""}`);
 
   // Brand-Style aus dem Folder ziehen (falls vorhanden)
   type FolderBrandRow = {
@@ -144,24 +218,42 @@ export async function startRender(
     if (folderRow) brand = folderRow as FolderBrandRow;
   }
   if (!imageRow?.image_url) {
-    return {
-      ok: false,
-      error:
-        "Für diese Variante existiert noch kein Bild — generiere zuerst ein Bild.",
-    };
+    return fail(
+      "Für diese Variante existiert noch kein Bild — generiere zuerst ein Bild.",
+    );
   }
+  log(`image+adcopy OK — proceed to insert`);
 
   let adCopy: z.infer<typeof adCopyLooseSchema>;
   try {
     const parsed = adCopyLooseSchema.safeParse(JSON.parse(creativeRow.output ?? ""));
-    if (!parsed.success)
-      return { ok: false, error: "Ad-Copy hat ein unerwartetes Format." };
+    if (!parsed.success) {
+      return fail(
+        `Ad-Copy hat ein unerwartetes Format. Zod-Issues: ${parsed.error.issues
+          .slice(0, 3)
+          .map((i) => `${i.path.join(".")}=${i.message}`)
+          .join("; ")}`,
+      );
+    }
     adCopy = parsed.data;
-  } catch {
-    return { ok: false, error: "Ad-Copy konnte nicht geparst werden." };
+  } catch (e) {
+    return fail(
+      `Ad-Copy JSON-Parse fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
   const variant = adCopy.variants[variantIndex];
-  if (!variant) return { ok: false, error: "Variante existiert nicht." };
+  if (!variant)
+    return fail(
+      `Variante ${variantIndex} existiert nicht (es gibt nur ${adCopy.variants.length}).`,
+    );
+
+  // UV-3 — Per-Variant-Texte mit Fallback auf root.
+  // Wenn die Variante eigene headline/subline hat, gewinnen die — sonst
+  // nimmt der Render die geteilten (Legacy-Verhalten).
+  const renderHeadline =
+    (variant as { headline?: string }).headline ?? adCopy.headline;
+  const renderSubline =
+    (variant as { subline?: string }).subline ?? adCopy.subline;
 
   // Cache-Buster aus Supabase-URL für Creatomate entfernen, damit der
   // Downloader auf deren Seite den Fetch sauber cached.
@@ -170,9 +262,17 @@ export async function startRender(
   // im Supabase-Storage neue Bytes drüber-uploaded haben. Mit Cache-Buster
   // ändert sich die URL bei jedem Upload → Creatomate fetcht frisch.
   const imageUrlClean = imageRow.image_url as string;
-  const productImageUrl = (imageRow.product_image_url as string | null) ?? null;
 
   // 2) DB-Eintrag mit Status "processing" (oder upsert, falls erneut gerendert)
+  log(
+    `inserting creative_renders row: template_kind=${templateKind} template_slot=${slot}`,
+  );
+  // ACHTUNG: `post_status` wird BEWUSST NICHT explizit gesetzt — der
+  // DB-Default ('draft' aus Migration 20260530_000001_renders_scheduling)
+  // übernimmt das. Wenn wir es explizit reinpacken, knallt's mit
+  // „Could not find the 'post_status' column in schema cache" sobald
+  // PostgREST's gecachtes Schema die Migration noch nicht gesehen hat
+  // (häufig nach Schema-Änderungen in Supabase).
   const { data: renderRow, error: insertErr } = await supabase
     .from("creative_renders")
     .insert({
@@ -184,11 +284,20 @@ export async function startRender(
       creatomate_template_id: templateId,
       status: "processing",
     })
-    .select("id")
+    .select("id, creative_id")
     .single();
   if (insertErr || !renderRow) {
-    return { ok: false, error: `DB-Insert fehlgeschlagen: ${insertErr?.message ?? "unbekannt"}` };
+    // Häufigster Fehler: CHECK-Constraint auf template_kind ist noch alt
+    // (nur die 3 ursprünglichen Werte). Migration 20260601 muss laufen.
+    const hint =
+      insertErr?.message?.includes("template_kind") ||
+      insertErr?.message?.includes("check constraint")
+        ? ` — HINWEIS: das ist die alte CHECK-Constraint. ` +
+          `Lass die Migration 20260601_000001_renders_kinds_expand.sql laufen.`
+        : "";
+    return fail(`DB-Insert fehlgeschlagen: ${insertErr?.message ?? "unbekannt"}${hint}`);
   }
+  log(`insert OK — renderRow.id=${renderRow.id}, calling Creatomate next`);
 
   // 3) Creatomate-API: Render starten
   // Send each value in BOTH the short form and the explicit `Element.property`
@@ -207,11 +316,11 @@ export async function startRender(
   const fontWeight = brand?.brand_font_weight ?? null;
 
   const modifications: Record<string, string> = {
-    // Text
-    Headline: adCopy.headline,
-    "Headline.text": adCopy.headline,
-    Subline: adCopy.subline,
-    "Subline.text": adCopy.subline,
+    // Text (UV-3: per-variant Werte mit Fallback)
+    Headline: renderHeadline,
+    "Headline.text": renderHeadline,
+    Subline: renderSubline,
+    "Subline.text": renderSubline,
     CTA: variant.cta,
     "CTA.text": variant.cta,
     // Background image
@@ -261,20 +370,14 @@ export async function startRender(
     modifications["Font-Weight"] = fontWeight;
   }
 
-  // Optionales Produktbild — wird im Template als Overlay über Background gelegt.
-  // Mehrere Naming-Konventionen, damit verschiedene Templates funktionieren.
-  if (productImageUrl) {
-    modifications["ProductImage"] = productImageUrl;
-    modifications["ProductImage.source"] = productImageUrl;
-    modifications["Product"] = productImageUrl;
-    modifications["Product.source"] = productImageUrl;
-    modifications["Product-Image"] = productImageUrl;
-    modifications["Product-Image.source"] = productImageUrl;
-  }
+  // Kein separates Produktbild-Overlay mehr: Das Produkt ist bereits in das
+  // KI-generierte Background-Bild komponiert. Ein zweites „ProductImage"-Element
+  // würde das Produkt doppelt zeigen — daher bewusst nicht mehr gesendet.
 
   const body = { template_id: templateId, modifications };
 
   try {
+    log(`POST → ${CREATOMATE_API_BASE}/renders (template=${templateId.slice(0, 8)}…)`);
     const res = await fetch(`${CREATOMATE_API_BASE}/renders`, {
       method: "POST",
       headers: {
@@ -283,10 +386,11 @@ export async function startRender(
       },
       body: JSON.stringify(body),
     });
+    log(`Creatomate response HTTP ${res.status}`);
     if (!res.ok) {
       const text = await res.text();
       await markRenderFailed(supabase, renderRow.id, `Creatomate ${res.status}: ${text.slice(0, 300)}`);
-      return { ok: false, error: `Creatomate-Fehler ${res.status}: ${text.slice(0, 200)}` };
+      return fail(`Creatomate-Fehler ${res.status}: ${text.slice(0, 200)}`);
     }
     const json = (await res.json()) as Array<{ id: string; status: string; url?: string }> | {
       id: string;
@@ -297,8 +401,10 @@ export async function startRender(
     const first = Array.isArray(json) ? json[0] : json;
     if (!first?.id) {
       await markRenderFailed(supabase, renderRow.id, "Antwort enthielt keine Render-ID.");
-      return { ok: false, error: "Creatomate hat keine Render-ID geliefert." };
+      return fail("Creatomate hat keine Render-ID geliefert.");
     }
+
+    log(`Creatomate accepted: creatomate_id=${first.id}, status=${first.status}`);
 
     await supabase
       .from("creative_renders")
@@ -311,12 +417,34 @@ export async function startRender(
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unbekannter Netzwerk-Fehler.";
     await markRenderFailed(supabase, renderRow.id, msg);
-    return { ok: false, error: `Render-Start fehlgeschlagen: ${msg}` };
+    return fail(`Render-Start fehlgeschlagen: ${msg}`);
   }
 
   revalidatePath(`/dashboard/library/${creativeId}`);
-
+  log(`done. renderRow.id=${renderRow.id}`);
   return { ok: true, renderId: renderRow.id };
+}
+
+/**
+ * Sucht die project_id des Creatives + revalidated die zugehörige
+ * Projekt-Seite (Posts-Kanban). So sieht der User frische Renders sofort
+ * in den Drafts-Spalten, ohne F5.
+ *
+ * NUR die spezifische Projekt-Seite revalidaten — NICHT zusätzlich
+ * `/dashboard/projects`, weil das den Turbopack-Worker in Dev unter Last
+ * setzt ("Jest worker exceptions exceeding retry limit").
+ */
+async function revalidateProjectForCreative(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  creativeId: string,
+) {
+  const { data: row } = await supabase
+    .from("creatives")
+    .select("project_id")
+    .eq("id", creativeId)
+    .maybeSingle();
+  const pid = (row as { project_id: string | null } | null)?.project_id;
+  if (pid) revalidatePath(`/dashboard/projects/${pid}`);
 }
 
 async function markRenderFailed(
@@ -455,6 +583,8 @@ export async function startBulkRender(
 // pollRender (vom Client periodisch aufgerufen, solange status processing)
 // ---------------------------------------------------------------------------
 export async function pollRender(renderRowId: string): Promise<PollResult> {
+  const plog = (msg: string) => console.log(`[pollRender ${renderRowId.slice(0, 8)}] ${msg}`);
+
   if (!renderRowId) return { status: "missing" };
 
   const supabase = await createClient();
@@ -468,10 +598,14 @@ export async function pollRender(renderRowId: string): Promise<PollResult> {
     .select("id, status, creatomate_id, output_url, error_message, creative_id")
     .eq("id", renderRowId)
     .single();
-  if (!row) return { status: "missing" };
+  if (!row) {
+    plog(`row not found in DB`);
+    return { status: "missing" };
+  }
 
   // Wenn DB schon final → direkt zurück, kein API-Hit.
   if (row.status === "succeeded" || row.status === "failed") {
+    plog(`DB cached: status=${row.status}, output_url=${row.output_url ? "✓" : "(null)"}`);
     return {
       status: row.status as "succeeded" | "failed",
       outputUrl: row.output_url,
@@ -479,6 +613,7 @@ export async function pollRender(renderRowId: string): Promise<PollResult> {
     };
   }
   if (!row.creatomate_id) {
+    plog(`no creatomate_id yet — staying ${row.status}`);
     return { status: row.status as "pending" | "processing" };
   }
   if (!process.env.CREATOMATE_API_KEY) {
@@ -487,6 +622,7 @@ export async function pollRender(renderRowId: string): Promise<PollResult> {
 
   // Live-Status bei Creatomate holen
   try {
+    plog(`GET creatomate/renders/${row.creatomate_id.slice(0, 8)}…`);
     const res = await fetch(
       `${CREATOMATE_API_BASE}/renders/${row.creatomate_id}`,
       {
@@ -498,6 +634,7 @@ export async function pollRender(renderRowId: string): Promise<PollResult> {
     );
     if (!res.ok) {
       const text = await res.text();
+      plog(`Creatomate HTTP ${res.status}: ${text.slice(0, 150)}`);
       return {
         status: "processing",
         errorMessage: `Creatomate ${res.status}: ${text.slice(0, 200)}`,
@@ -508,14 +645,20 @@ export async function pollRender(renderRowId: string): Promise<PollResult> {
       url?: string;
       error_message?: string;
     };
+    plog(`Creatomate status=${data.status} url=${data.url ? "✓" : "(none)"}`);
 
     if (data.status === "succeeded") {
+      const finalUrl = data.url ?? null;
       await supabase
         .from("creative_renders")
-        .update({ status: "succeeded", output_url: data.url ?? null })
+        .update({ status: "succeeded", output_url: finalUrl })
         .eq("id", row.id);
+      // Library + Posts-Kanban auf der Projekt-Seite revalidaten,
+      // damit der neue Render sofort in „Drafts" auftaucht.
       revalidatePath(`/dashboard/library/${row.creative_id}`);
-      return { status: "succeeded", outputUrl: data.url };
+      await revalidateProjectForCreative(supabase, row.creative_id);
+      plog(`SUCCEEDED → returning outputUrl=${finalUrl ? finalUrl.slice(0, 60) + "…" : "(null!)"}`);
+      return { status: "succeeded", outputUrl: finalUrl };
     }
     if (data.status === "failed") {
       await supabase
@@ -526,6 +669,8 @@ export async function pollRender(renderRowId: string): Promise<PollResult> {
         })
         .eq("id", row.id);
       revalidatePath(`/dashboard/library/${row.creative_id}`);
+      await revalidateProjectForCreative(supabase, row.creative_id);
+      plog(`FAILED → ${data.error_message ?? "kein detail"}`);
       return {
         status: "failed",
         errorMessage: data.error_message ?? "Render fehlgeschlagen.",
@@ -535,6 +680,7 @@ export async function pollRender(renderRowId: string): Promise<PollResult> {
     return { status: "processing" };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Netzwerk-Fehler.";
+    plog(`EXCEPTION: ${msg}`);
     return { status: "processing", errorMessage: msg };
   }
 }
@@ -543,6 +689,75 @@ export async function pollRender(renderRowId: string): Promise<PollResult> {
 // deleteRender (entfernt DB-Eintrag; das Creatomate-Asset bleibt dort, aber
 // wir verlieren den Pointer — bei 50 Free-Credits kein Drama)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// saveRenderToDrafts — User-Klick „In Drafts speichern" setzt saved_at.
+// Vorher: Render existiert in DB, ist aber im Posts-Kanban unsichtbar.
+// Nachher: Karte erscheint in der Drafts-Spalte.
+// ---------------------------------------------------------------------------
+export async function saveRenderToDrafts(
+  _prev: SaveRenderState,
+  formData: FormData,
+): Promise<SaveRenderState> {
+  const slog = (m: string) => console.log(`[saveRenderToDrafts] ${m}`);
+  const renderId = String(formData.get("renderId") ?? "");
+  if (!renderId) return { ok: false, error: "Render-ID fehlt." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Nicht eingeloggt." };
+
+  const ts = new Date().toISOString();
+  slog(`updating renderId=${renderId.slice(0, 8)} saved_at=${ts}`);
+
+  const { data: row, error } = await supabase
+    .from("creative_renders")
+    .update({ saved_at: ts })
+    .eq("id", renderId)
+    .eq("user_id", user.id)
+    .select("id, creative_id, saved_at")
+    .single();
+
+  if (error) {
+    console.error(`[saveRenderToDrafts] DB-ERROR:`, error);
+    return {
+      ok: false,
+      error: `Speichern fehlgeschlagen: ${error.message}`,
+    };
+  }
+  if (!row) {
+    return { ok: false, error: "Render-Row nicht gefunden oder kein Zugriff." };
+  }
+
+  // Wenn saved_at zurückkommt aber null/leer → die Spalte existiert in der
+  // DB nicht. Häufigster Grund: Migration nicht angewendet ODER PostgREST-
+  // Schema-Cache stale.
+  if (!row.saved_at) {
+    console.error(
+      `[saveRenderToDrafts] WARNUNG: Update lief durch, aber saved_at ist ${row.saved_at}. ` +
+        `Vermutlich existiert die Spalte noch nicht in der DB oder der ` +
+        `PostgREST-Schema-Cache ist stale. Migration 20260601_000002_renders_saved_at.sql ` +
+        `anwenden + 'NOTIFY pgrst, "reload schema";' ausführen.`,
+    );
+    return {
+      ok: false,
+      error:
+        "Spalte saved_at existiert nicht in der DB. " +
+        "Migration anwenden + 'NOTIFY pgrst, \"reload schema\";' in Supabase SQL Editor ausführen.",
+    };
+  }
+
+  slog(`update OK, saved_at=${row.saved_at}`);
+
+  // Library + Posts-Kanban auf der Projekt-Seite revalidaten,
+  // damit die Karte sofort in Drafts auftaucht.
+  revalidatePath(`/dashboard/library/${row.creative_id}`);
+  await revalidateProjectForCreative(supabase, row.creative_id as string);
+
+  return { ok: true };
+}
+
 export async function deleteRender(formData: FormData): Promise<void> {
   const renderRowId = String(formData.get("renderId") ?? "");
   const creativeId = String(formData.get("creativeId") ?? "");

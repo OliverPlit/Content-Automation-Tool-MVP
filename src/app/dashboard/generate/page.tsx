@@ -1,8 +1,15 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
+import { Icon } from "@/components/icon";
 import {
   generateAdCopy,
   rateVariant,
@@ -11,6 +18,7 @@ import {
   type BundleSaveState,
   type RatingState,
 } from "./actions";
+import { saveGenerateTemplate } from "../templates/actions";
 import { MetaImportZone } from "./meta-import-zone";
 import { ScoreBadge } from "./score-badge";
 import {
@@ -20,6 +28,7 @@ import {
 } from "./session-persist";
 import {
   ADDRESSINGS,
+  ANGLES,
   AWARENESS,
   FRAMES,
   FRAMEWORKS,
@@ -94,11 +103,32 @@ export default function GeneratePage() {
   const [urgency, setUrgency] = useState<boolean>(false);
   const [productFacts, setProductFacts] = useState<ProductFacts | null>(null);
 
+  // RF-Brand — Logo + 4 extrahierte Farben aus dem Crawl der Firmenseite.
+  // Werden beim Save in den Folder-Brand übernommen, damit Renders die
+  // Firmen-Farbgebung tragen.
+  type BrandColorsState = {
+    primary: string;
+    accent: string;
+    background: string;
+    text: string;
+  };
+  const [logoUrl, setLogoUrl] = useState<string>("");
+  const [brandColors, setBrandColors] = useState<BrandColorsState | null>(null);
+
   // Bild-Quelle
   const [imageSource, setImageSource] = useState<ImageSource>("ai");
   const [customImageUrl, setCustomImageUrl] = useState("");
   const [imageSourceError, setImageSourceError] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  // Einweb-Modus für Produktbilder: realism (Default, fotorealistisch) | exact
+  const [embedMode, setEmbedMode] = useState<"realism" | "exact">("realism");
+  // Anzahl Varianten (auf Page-Ebene gespiegelt, damit die optionale
+  // „Angle pro Variante"-Auswahl die richtige Anzahl Zeilen zeigen kann).
+  const [variantCount, setVariantCount] = useState<number>(3);
+  // Wizard-Schritt (Akkordeon): 1 = Inhalt · 2 = Format · 3 = Feinschliff.
+  // 0 = alle zu. Immer nur einer offen.
+  const [step, setStep] = useState<number>(1);
+  const toggleStep = (k: number) => setStep((s) => (s === k ? 0 : k));
 
   // Projekt-Zuordnung (N2). Leerer String = kein Projekt.
   const [projectId, setProjectId] = useState<string>("");
@@ -139,6 +169,8 @@ export default function GeneratePage() {
       if (typeof data.websiteText === "string") setWebsiteText(data.websiteText);
       if (typeof data.projectId === "string") setProjectId(data.projectId);
       if (typeof data.folderId === "string") setFolderId(data.folderId);
+      if (typeof data.logoUrl === "string") setLogoUrl(data.logoUrl);
+      if (data.brandColors !== undefined) setBrandColors(data.brandColors);
       setSessionRestored(true);
     }
     setHydrated(true);
@@ -194,6 +226,8 @@ export default function GeneratePage() {
       websiteText,
       projectId,
       folderId,
+      logoUrl,
+      brandColors,
     });
   }, [
     hydrated,
@@ -212,6 +246,8 @@ export default function GeneratePage() {
     websiteText,
     projectId,
     folderId,
+    logoUrl,
+    brandColors,
   ]);
 
   const handleResetSession = () => {
@@ -237,12 +273,104 @@ export default function GeneratePage() {
     setWebsiteText("");
     setProjectId("");
     setFolderId("");
+    setLogoUrl("");
+    setBrandColors(null);
     setSessionRestored(false);
   };
 
   // Template-Loader (?template=<id>)
+  const router = useRouter();
   const searchParams = useSearchParams();
   const templateId = searchParams.get("template");
+
+  // Ref auf das Haupt-Form, damit „Als Vorlage speichern" den AKTUELLEN
+  // Form-Zustand (inkl. unkontrollierter Selects) per FormData auslesen kann.
+  const formRef = useRef<HTMLFormElement>(null);
+  // Liste der eigenen Vorlagen für den Vorlagen-Picker oben im Form.
+  const [templates, setTemplates] = useState<{ id: string; name: string }[]>([]);
+  const [savingTpl, startSaveTpl] = useTransition();
+  const [tplMsg, setTplMsg] = useState<
+    { kind: "ok" | "err"; text: string } | null
+  >(null);
+
+  // Vorlagen einmal beim Mount laden (für den Picker).
+  useEffect(() => {
+    fetch("/api/templates", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { templates?: { id: string; name: string }[] }) => {
+        if (Array.isArray(j.templates)) setTemplates(j.templates);
+      })
+      .catch(() => {
+        // silent fail — Picker bleibt einfach leer
+      });
+  }, []);
+
+  // „Als Vorlage speichern" — liest den aktuellen Form-Zustand via Ref,
+  // baut die PromptTemplateData und ruft die Server-Action DIREKT auf (kein
+  // Form-Submit → der Generate-Lauf wird NICHT ausgelöst).
+  const handleSaveTemplate = () => {
+    const form = formRef.current;
+    if (!form) return;
+    const defaultName =
+      (productFacts?.name || productText || "").slice(0, 40).trim() ||
+      "Meine Vorlage";
+    const name = window.prompt("Name für die Vorlage:", defaultName);
+    if (name === null) return; // Abbrechen
+    if (name.trim().length < 2) {
+      setTplMsg({ kind: "err", text: "Name muss mind. 2 Zeichen haben." });
+      return;
+    }
+
+    const fd = new FormData(form);
+    const td: Record<string, unknown> = {};
+    const pick = (key: string) => {
+      const v = fd.get(key);
+      if (v != null && v !== "") td[key] = v;
+    };
+    [
+      "product",
+      "audience",
+      "tone",
+      "machine",
+      "angle",
+      "variantCount",
+      "imageStyle",
+      "awareness",
+      "framework",
+      "hookHint",
+      "frame",
+      "persona",
+      "addressing",
+      "platform",
+      "imageVariantCount",
+    ].forEach(pick);
+    const levers = fd.getAll("persuasionLevers").filter((v) => v && v !== "");
+    if (levers.length) td.persuasionLevers = levers;
+    if (fd.get("urgency")) td.urgency = true;
+
+    const payload = new FormData();
+    payload.set("name", name.trim());
+    payload.set("templateData", JSON.stringify(td));
+
+    startSaveTpl(async () => {
+      const res = await saveGenerateTemplate(payload);
+      if (res.ok) {
+        setTplMsg({ kind: "ok", text: `Vorlage „${res.name}“ gespeichert.` });
+        // Picker-Liste aktualisieren, damit die neue Vorlage sofort auftaucht
+        try {
+          const r = await fetch("/api/templates", { cache: "no-store" });
+          const j = (await r.json()) as {
+            templates?: { id: string; name: string }[];
+          };
+          if (Array.isArray(j.templates)) setTemplates(j.templates);
+        } catch {
+          // egal — Speichern war erfolgreich
+        }
+      } else {
+        setTplMsg({ kind: "err", text: res.error ?? "Speichern fehlgeschlagen." });
+      }
+    });
+  };
   const [loadedTemplate, setLoadedTemplate] = useState<{
     id: string;
     name: string;
@@ -290,57 +418,60 @@ export default function GeneratePage() {
 
   return (
     <div className="mx-auto max-w-7xl">
-      <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">
-            Neue Creative generieren
+      <header className="mb-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+            Erstellen
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Inputs links, Ergebnis-Grid rechts. Jede Variante wird parallel
-            generiert (eigene Headline, Subline, Body, CTA + Bild).
-          </p>
-          {sessionRestored && hydrated && (
-            <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
-              ✓ Vorherige Eingaben wiederhergestellt
-              <button
-                type="button"
-                onClick={handleResetSession}
-                className="ml-1 text-[10px] text-emerald-700 underline hover:text-emerald-900"
-              >
-                zurücksetzen
-              </button>
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {!sessionRestored && hydrated && (
-            <button
-              type="button"
-              onClick={handleResetSession}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
-              title="Form-Eingaben zurücksetzen und localStorage leeren"
+          <div className="flex items-center gap-3 text-[12px] text-[var(--color-muted)]">
+            <a
+              href="/dashboard/generate/bulk"
+              className="hover:text-[var(--foreground)] hover:underline"
             >
-              ↺ Reset
-            </button>
-          )}
-          <a
-            href="/dashboard/generate/bulk"
-            className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-900 hover:bg-blue-100"
-          >
-            ⚡ Bulk-Generate aus CSV →
-          </a>
+              Mehrere Produkte? Bulk-Modus
+            </a>
+            <span aria-hidden>·</span>
+            <a
+              href="/dashboard/images/new"
+              className="hover:text-[var(--foreground)] hover:underline"
+            >
+              Nur Bild, kein Text
+            </a>
+            {hydrated && (
+              <>
+                <span aria-hidden>·</span>
+                <button
+                  type="button"
+                  onClick={handleResetSession}
+                  className="hover:text-[var(--foreground)] hover:underline"
+                  title="Form-Eingaben zurücksetzen"
+                >
+                  Reset
+                </button>
+              </>
+            )}
+          </div>
         </div>
+        <p className="mt-1 text-[13px] text-[var(--color-muted)]">
+          Inputs links, Ergebnis-Grid rechts. Jede Variante wird parallel
+          generiert.
+          {sessionRestored && hydrated && (
+            <span className="ml-2 text-[var(--foreground)]">
+              · Vorherige Eingaben wiederhergestellt
+            </span>
+          )}
+        </p>
       </header>
 
       {loadedTemplate && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm">
-          <p className="text-blue-900">
-            📋 Vorlage <strong>{loadedTemplate.name}</strong> geladen — Form ist
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3 text-[13px]">
+          <p className="text-[var(--foreground)]">
+            Vorlage <strong>{loadedTemplate.name}</strong> geladen — Form ist
             vorausgefüllt. Du kannst alles noch anpassen vor dem Generieren.
           </p>
           <a
             href="/dashboard/generate"
-            className="text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline"
+            className="text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline"
           >
             Ohne Vorlage starten
           </a>
@@ -352,7 +483,7 @@ export default function GeneratePage() {
         </div>
       )}
       {templateError && (
-        <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
           Vorlage konnte nicht geladen werden: {templateError}
         </div>
       )}
@@ -362,14 +493,42 @@ export default function GeneratePage() {
         <MetaImportZone />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[360px_1fr]">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[420px_1fr]">
         {/* --------- Left column: sticky form --------- */}
         <aside className="md:sticky md:top-6 md:self-start">
           <form
             key={formKey}
+            ref={formRef}
             action={generateAction}
-            className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-blue-900/5"
+            className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-900/5"
           >
+            <TemplateBar
+              templates={templates}
+              currentId={templateId}
+              onPick={(id) =>
+                router.push(
+                  id
+                    ? `/dashboard/generate?template=${id}`
+                    : "/dashboard/generate",
+                )
+              }
+              onSave={handleSaveTemplate}
+              saving={savingTpl}
+              message={tplMsg}
+              onDismiss={() => setTplMsg(null)}
+            />
+
+            <WizardStep
+              n={1}
+              title="Inhalt"
+              open={step === 1}
+              onToggle={() => toggleStep(1)}
+              summary={(
+                productFacts?.name ||
+                productText ||
+                "Produkt, Persona, Zielgruppe…"
+              ).slice(0, 34)}
+            >
             <Field label="Produkt / Service" error={genState.fieldErrors?.product}>
               {/* A3 — eine Quelle der Wahrheit. Wenn Produktfakten existieren,
                   ist facts.name die Quelle und das Textarea syncs bidirektional. */}
@@ -392,7 +551,7 @@ export default function GeneratePage() {
                 placeholder="z.B. WODOIL Hydrauliköl HLP 46, 200-Liter-Fass"
               />
               {productFacts?.name?.length ? (
-                <p className="mt-1 text-[10px] text-emerald-700/80">
+                <p className="mt-1 text-[10px] text-slate-700/80">
                   ✓ Synchronisiert mit Produktfakten unten
                 </p>
               ) : null}
@@ -412,8 +571,18 @@ export default function GeneratePage() {
               setMachineValue={setMachineValue}
               setToneValue={setToneValue}
               setProductFacts={setProductFacts}
+              setLogoUrl={setLogoUrl}
+              setBrandColors={setBrandColors}
+              logoUrl={logoUrl}
+              brandColors={brandColors}
             />
             <input type="hidden" name="websiteText" value={websiteText} />
+            <input type="hidden" name="logoUrl" value={logoUrl} />
+            <input
+              type="hidden"
+              name="brandColors"
+              value={brandColors ? JSON.stringify(brandColors) : ""}
+            />
 
             <ProductFactsCard facts={productFacts} onChange={setProductFacts} />
             <input
@@ -461,52 +630,75 @@ export default function GeneratePage() {
                 Fallback "industrie". Angle Default "direkt". */}
             <input type="hidden" name="machine" value={machineValue} />
             <input type="hidden" name="angle" value="direkt" />
+            </WizardStep>
 
+            <WizardStep
+              n={2}
+              title="Format & Varianten"
+              open={step === 2}
+              onToggle={() => toggleStep(2)}
+              summary={`${
+                PLATFORMS.find((p) => p.value === platform)?.label ?? "Plattform"
+              } · ${variantCount}×`}
+            >
             <PlatformPicker value={platform} onChange={setPlatform} />
             <input type="hidden" name="platform" value={platform} />
 
-            <ProjectPicker
-              value={projectId}
-              onChange={(v) => {
-                setProjectId(v);
-                // Bei Projektwechsel Folder zurücksetzen
-                if (v !== projectId) setFolderId("");
-              }}
-              projects={projects}
-            />
-            <input type="hidden" name="projectId" value={projectId} />
-
-            {projectId && (
-              <FolderPicker
-                value={folderId}
-                onChange={setFolderId}
-                folders={folders}
-                projectId={projectId}
+            {/* Kompakte Selects 2-spaltig → weniger Scrollen */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <ProjectPicker
+                value={projectId}
+                onChange={(v) => {
+                  setProjectId(v);
+                  if (v !== projectId) setFolderId("");
+                }}
+                projects={projects}
               />
-            )}
+              {projectId && (
+                <FolderPicker
+                  value={folderId}
+                  onChange={setFolderId}
+                  folders={folders}
+                  projectId={projectId}
+                />
+              )}
+              <ImageStyleField
+                initialValue={tplData?.imageStyle as ImageStyleValue | undefined}
+              />
+              <ImageVariantCountField
+                value={imageVariantCount}
+                onChange={setImageVariantCount}
+              />
+            </div>
+            {/* Hidden inputs außerhalb des Grids (keine Layout-Zellen) */}
+            <input type="hidden" name="projectId" value={projectId} />
             <input type="hidden" name="folderId" value={folderId} />
-
-            <VariantCountField
-              error={genState.fieldErrors?.variantCount}
-              initialValue={tplData?.variantCount}
-            />
-
-            <ImageStyleField initialValue={tplData?.imageStyle as ImageStyleValue | undefined} />
-
-            <ImageVariantCountField
-              value={imageVariantCount}
-              onChange={setImageVariantCount}
-            />
             <input
               type="hidden"
               name="imageVariantCount"
               value={imageVariantCount}
             />
 
-            <details className="rounded-lg border border-slate-200 bg-slate-50/40 open:bg-white">
-              <summary className="cursor-pointer select-none rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-                ⚙️ Erweiterte Einstellungen
-                <span className="ml-2 text-xs font-normal text-slate-500">
+            <VariantCountField
+              error={genState.fieldErrors?.variantCount}
+              initialValue={tplData?.variantCount}
+              onChange={setVariantCount}
+            />
+
+            <PerVariantAngles count={variantCount} />
+            </WizardStep>
+
+            <WizardStep
+              n={3}
+              title="Feinschliff"
+              open={step === 3}
+              onToggle={() => toggleStep(3)}
+              summary="Erweitert · Bild-Quelle · optional"
+            >
+            <details className="rounded-lg border border-[var(--color-line)] bg-white open:bg-white">
+              <summary className="cursor-pointer select-none rounded-lg px-3 py-2 text-[13px] font-medium text-[var(--foreground)] hover:bg-[var(--color-surface)]">
+                Erweiterte Einstellungen
+                <span className="ml-2 text-[11px] font-normal text-[var(--color-muted)]">
                   (auto aus Persona — nur ändern wenn nötig)
                 </span>
               </summary>
@@ -630,17 +822,67 @@ export default function GeneratePage() {
               name="customImageUrl"
               value={imageSource === "ai" ? "" : customImageUrl}
             />
+            <input type="hidden" name="embedMode" value={embedMode} />
+
+            {imageSource !== "ai" && (
+              <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+                <label className="block text-xs font-medium text-slate-700">
+                  Produkt einweben — Modus
+                </label>
+                <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                  {(
+                    [
+                      {
+                        v: "realism",
+                        t: "Realismus",
+                        h: "Das Modell platziert das Produkt fotorealistisch in die Szene (Tiefenschärfe, Licht, Schatten gematcht). Label kann minimal abweichen.",
+                      },
+                      {
+                        v: "exact",
+                        t: "Label exakt",
+                        h: "Produkt pixelgenau einkopiert + Relight. Label garantiert identisch, wirkt aber ggf. etwas flacher.",
+                      },
+                    ] as const
+                  ).map((o) => {
+                    const on = embedMode === o.v;
+                    return (
+                      <button
+                        key={o.v}
+                        type="button"
+                        onClick={() => setEmbedMode(o.v)}
+                        title={o.h}
+                        className={
+                          "rounded-md px-2.5 py-1.5 text-xs font-medium ring-1 transition " +
+                          (on
+                            ? "bg-slate-800 text-white ring-slate-800"
+                            : "bg-white text-slate-700 ring-slate-300 hover:bg-slate-50")
+                        }
+                      >
+                        {o.t}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-[10px] text-slate-500">
+                  {embedMode === "realism"
+                    ? "Fotorealistisch eingewoben — wie ein echtes Foto (empfohlen)."
+                    : "Label garantiert pixelgenau — dafür weniger „im Bild“."}
+                </p>
+              </div>
+            )}
+            </WizardStep>
 
             {genState.error && (
-              <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+              <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {genState.error}
               </p>
             )}
 
+            <div className="sticky bottom-0 z-10 -mx-5 -mb-5 space-y-1 rounded-b-2xl border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur-sm">
             <button
               type="submit"
               disabled={generating || uploadingImage}
-              className="w-full rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-900/40 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+              className="w-full rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-slate-900/40 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
             >
               {generating
                 ? "Generiere Copy + KI-Szenen parallel…"
@@ -650,8 +892,13 @@ export default function GeneratePage() {
             </button>
             <p className="text-center text-[10px] text-slate-400">
               Pro Variante: ~0,01 € Text + ~4 ¢ KI-Szene
-              {imageSource !== "ai" ? " · Produktbild als Overlay" : ""}
+              {imageSource !== "ai"
+                ? embedMode === "realism"
+                  ? " · Produkt fotorealistisch eingewoben"
+                  : " · Produkt pixelgenau (Composite + Relight)"
+                : ""}
             </p>
+            </div>
           </form>
         </aside>
 
@@ -683,7 +930,7 @@ function ResultsGrid({
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-blue-900">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900">
           {variants.length} Variante{variants.length === 1 ? "" : "n"} generiert
           {imageCount > 0 && (
             <span className="ml-2 text-xs font-medium text-slate-500">
@@ -730,6 +977,9 @@ function BundleSaveButton({
     saveAllVariants,
     initialBundleState,
   );
+  // Root-Headline/Subline = die der ersten Variante (Legacy + Library-List
+  // braucht einen Fallback fürs Headline-Thumbnail). Pro-Variant-Headlines
+  // gehen ZUSÄTZLICH im Payload mit — Render zieht später die richtige.
   const headline = variants[0]?.headline ?? "";
   const subline = variants[0]?.subline ?? "";
   const payload = variants.map((v) => {
@@ -739,6 +989,9 @@ function BundleSaveButton({
       index: v.index,
       body: v.body,
       cta: v.cta,
+      // UV-2 — Per-Variant-Texte ins Bundle-Payload.
+      headline: v.headline,
+      subline: v.subline,
       imagePrompt: v.imagePrompt,
       previewImageUrl,
       productImageUrl: v.productImageUrl ?? "",
@@ -756,30 +1009,37 @@ function BundleSaveButton({
       <input type="hidden" name="subline" value={subline} />
       <input type="hidden" name="projectId" value={input.projectId ?? ""} />
       <input type="hidden" name="folderId" value={input.folderId ?? ""} />
+      <input type="hidden" name="logoUrl" value={input.logoUrl ?? ""} />
+      <input
+        type="hidden"
+        name="brandColors"
+        value={input.brandColors ? JSON.stringify(input.brandColors) : ""}
+      />
       <input type="hidden" name="variantsJson" value={JSON.stringify(payload)} />
 
       {state.ok && state.savedId && (
         <a
           href={`/dashboard/library/${state.savedId}`}
-          className="text-xs font-medium text-blue-700 hover:text-blue-900"
+          className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--foreground)] hover:opacity-70"
         >
-          ✓ Bündel gespeichert ({state.savedCount}) →
+          <Icon name="check" className="size-3" />
+          Bündel gespeichert ({state.savedCount})
         </a>
       )}
       {state.error && (
-        <span className="text-xs text-red-700">{state.error}</span>
+        <span className="text-[12px] text-slate-700">{state.error}</span>
       )}
 
       <button
         type="submit"
         disabled={pending || state.ok}
-        className="rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-900/30 transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+        className="inline-flex items-center gap-1.5 rounded-full bg-[var(--foreground)] px-3.5 py-1.5 text-[12px] font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {pending
           ? "Speichere…"
           : state.ok
-            ? "✓ Gespeichert"
-            : `📦 Alle ${variants.length} als Bündel speichern`}
+            ? (<><Icon name="check" className="size-3.5" /> Gespeichert</>)
+            : (<><Icon name="rectangle-stack" className="size-3.5" /> Alle {variants.length} als Bündel speichern</>)}
       </button>
     </form>
   );
@@ -805,7 +1065,7 @@ function VariantCard({
   const shownImage = allImages[activeImage] ?? variant.imageUrl;
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md shadow-blue-900/5 transition-shadow hover:shadow-lg">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md shadow-slate-900/5 transition-shadow hover:shadow-lg">
       {/* Bild */}
       <div className="relative aspect-square w-full overflow-hidden bg-slate-100">
         {shownImage && !imgLoadFailed ? (
@@ -822,7 +1082,7 @@ function VariantCard({
             {shownImage && imgLoadFailed ? (
               <>
                 <span className="text-2xl">🖼️</span>
-                <span className="font-medium text-red-700">
+                <span className="font-medium text-slate-700">
                   Bild kann nicht geladen werden
                 </span>
                 <span className="break-all text-[10px] text-slate-400">
@@ -832,7 +1092,7 @@ function VariantCard({
                   href={shownImage}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[10px] text-blue-700 underline"
+                  className="text-[10px] text-slate-700 underline"
                 >
                   URL im Browser öffnen
                 </a>
@@ -844,25 +1104,9 @@ function VariantCard({
             )}
           </div>
         )}
-        <span className="absolute left-3 top-3 rounded-full bg-blue-900/90 px-2.5 py-0.5 text-xs font-bold text-white shadow">
+        <span className="absolute left-3 top-3 rounded-full bg-slate-900/90 px-2.5 py-0.5 text-xs font-bold text-white shadow">
           Variante {variant.index}
         </span>
-        {variant.productImageUrl && (
-          <div
-            className="absolute bottom-3 right-3 flex items-center gap-1 rounded-lg bg-white/95 p-1 pr-2 shadow-md ring-1 ring-emerald-300"
-            title="Produktbild — wird im Library-Render als Overlay verwendet"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={variant.productImageUrl}
-              alt="Produktbild"
-              className="h-10 w-10 rounded object-cover"
-            />
-            <span className="text-[10px] font-semibold text-emerald-800">
-              🧴 Overlay
-            </span>
-          </div>
-        )}
         <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
           <ScoreBadge score={variant.score} issues={variant.scoreIssues} />
           {variant.hook && (
@@ -890,7 +1134,7 @@ function VariantCard({
               className={
                 "h-10 w-10 overflow-hidden rounded border transition " +
                 (i === activeImage
-                  ? "border-blue-700 ring-2 ring-blue-300"
+                  ? "border-slate-700 ring-2 ring-slate-300"
                   : "border-slate-300 opacity-70 hover:opacity-100")
               }
               title={`Bild ${i + 1}`}
@@ -929,7 +1173,7 @@ function VariantCard({
         <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">
           CTA
         </p>
-        <p className="text-sm font-semibold text-blue-800">{variant.cta}</p>
+        <p className="text-sm font-semibold text-slate-800">{variant.cta}</p>
 
         {/* Action-Buttons */}
         <div className="mt-auto flex flex-wrap gap-2 pt-3">
@@ -969,6 +1213,13 @@ function VariantCard({
               name="folderId"
               value={input.folderId ?? ""}
             />
+            {/* RF-Brand: Logo + Farben aus dem Crawl ans Save weiterreichen */}
+            <input type="hidden" name="logoUrl" value={input.logoUrl ?? ""} />
+            <input
+              type="hidden"
+              name="brandColors"
+              value={input.brandColors ? JSON.stringify(input.brandColors) : ""}
+            />
             <button
               type="submit"
               disabled={saving || justSaved}
@@ -984,12 +1235,12 @@ function VariantCard({
         </div>
 
         {saveState.error && saveState.savedVariantIndex === undefined && (
-          <p className="mt-1 text-xs text-red-700">{saveState.error}</p>
+          <p className="mt-1 text-xs text-slate-700">{saveState.error}</p>
         )}
         {justSaved && saveState.savedId && (
           <a
             href={`/dashboard/library/${saveState.savedId}`}
-            className="mt-1 text-xs text-blue-700 hover:text-blue-900"
+            className="mt-1 text-xs text-slate-700 hover:text-slate-900"
           >
             → Zum Eintrag in der Library
           </a>
@@ -1041,8 +1292,8 @@ function RatingBar({
             className={
               "rounded-md px-2 py-1 text-sm transition " +
               (myRating === 1
-                ? "bg-emerald-600 text-white"
-                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-emerald-50 hover:text-emerald-700")
+                ? "bg-slate-600 text-white"
+                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-700")
             }
             title="Hook merken (bei zukünftigen Generierungen bevorzugt)"
           >
@@ -1063,8 +1314,8 @@ function RatingBar({
             className={
               "rounded-md px-2 py-1 text-sm transition " +
               (myRating === -1
-                ? "bg-red-600 text-white"
-                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-red-50 hover:text-red-700")
+                ? "bg-slate-600 text-white"
+                : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-700")
             }
             title="Hook deboosten (bei zukünftigen Generierungen seltener)"
           >
@@ -1226,11 +1477,115 @@ ${v.imagePrompt}
         type="button"
         onClick={handle}
         disabled={busy}
-        className="rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-800 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-emerald-900/20 transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60 disabled:hover:translate-y-0"
+        className="rounded-lg bg-gradient-to-br from-slate-600 to-slate-800 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-slate-900/20 transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60 disabled:hover:translate-y-0"
       >
         {busy ? "Erstelle ZIP…" : "📦 Alle downloaden (ZIP)"}
       </button>
     </div>
+  );
+}
+
+// ===========================================================================
+// TemplateBar — Vorlagen direkt im Generate-Form: auswählen (füllt das Form
+// via ?template=<id> vor) ODER den aktuellen Zustand als neue Vorlage sichern.
+// ===========================================================================
+function TemplateBar({
+  templates,
+  currentId,
+  onPick,
+  onSave,
+  saving,
+  message,
+  onDismiss,
+}: {
+  templates: { id: string; name: string }[];
+  currentId: string | null;
+  onPick: (id: string) => void;
+  onSave: () => void;
+  saving: boolean;
+  message: { kind: "ok" | "err"; text: string } | null;
+  onDismiss: () => void;
+}) {
+  const activeName = currentId
+    ? (templates.find((t) => t.id === currentId)?.name ?? null)
+    : null;
+
+  return (
+    // Dezent + standardmäßig eingeklappt — Vorlagen sind ein Hilfsmittel,
+    // kein Hauptelement. Aktive Vorlage wird im Summary als Badge angezeigt.
+    <details className="group rounded-lg">
+      <summary className="flex cursor-pointer select-none list-none items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] font-medium text-[var(--color-muted)] transition-colors hover:bg-[var(--color-surface)] hover:text-[var(--foreground)]">
+        <Icon
+          name="chevron-right"
+          className="size-3 transition-transform group-open:rotate-90"
+        />
+        <Icon name="tag" className="size-3" />
+        <span>Vorlage</span>
+        {activeName && (
+          <span className="ml-0.5 max-w-[160px] truncate rounded-full bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--foreground)]">
+            {activeName}
+          </span>
+        )}
+      </summary>
+
+      <div className="mt-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] p-2.5">
+        <div className="flex items-center gap-2">
+          <select
+            value={currentId ?? ""}
+            onChange={(e) => onPick(e.target.value)}
+            className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-slate-700 focus:outline-none"
+            aria-label="Vorlage auswählen"
+          >
+            <option value="">— Vorlage wählen / einfügen —</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            title="Aktuelle Eingaben als wiederverwendbare Vorlage speichern"
+          >
+            <Icon name="tag" className="size-3.5" />
+            {saving ? "Speichere…" : "Speichern"}
+          </button>
+        </div>
+        {message && (
+          <div
+            className={
+              "mt-1.5 flex items-start justify-between gap-2 rounded-md px-2 py-1 text-[11px] " +
+              (message.kind === "ok"
+                ? "bg-emerald-50 text-emerald-800"
+                : "bg-red-50 text-red-700")
+            }
+          >
+            <span>{message.text}</span>
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label="Meldung schließen"
+              className="shrink-0 opacity-70 hover:opacity-100"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        <p className="mt-1 text-[10px] leading-snug text-[var(--color-muted)]">
+          Vorlage wählen füllt das Form vor · „Speichern“ legt die aktuellen
+          Eingaben als neue Vorlage an.{" "}
+          <a
+            href="/dashboard/settings/templates"
+            className="underline hover:text-[var(--foreground)]"
+          >
+            Alle verwalten
+          </a>
+        </p>
+      </div>
+    </details>
   );
 }
 
@@ -1293,6 +1648,10 @@ function WebsiteUrlField({
   setMachineValue,
   setToneValue,
   setProductFacts,
+  setLogoUrl,
+  setBrandColors,
+  logoUrl,
+  brandColors,
 }: {
   websiteText: string;
   setWebsiteText: (s: string) => void;
@@ -1307,6 +1666,14 @@ function WebsiteUrlField({
   setMachineValue: (v: MachineValue) => void;
   setToneValue: (v: (typeof TONES)[number]["value"]) => void;
   setProductFacts: (f: ProductFacts | null) => void;
+  setLogoUrl: (s: string) => void;
+  setBrandColors: (
+    c: { primary: string; accent: string; background: string; text: string } | null,
+  ) => void;
+  logoUrl: string;
+  brandColors:
+    | { primary: string; accent: string; background: string; text: string }
+    | null;
 }) {
   const [url, setUrl] = useState("");
   const [crawledImage, setCrawledImage] = useState<string | null>(null);
@@ -1333,6 +1700,13 @@ function WebsiteUrlField({
         description?: string;
         imageUrl?: string;
         imageMirrored?: boolean;
+        logoUrl?: string;
+        brandColors?: {
+          primary: string;
+          accent: string;
+          background: string;
+          text: string;
+        } | null;
         product?: string;
         audience?: string;
         machine?: MachineValue;
@@ -1360,6 +1734,9 @@ function WebsiteUrlField({
         if (json.tone) setToneValue(json.tone);
         // Phase B — strukturierte Produktfakten (Doc 6.2)
         if (json.facts) setProductFacts(json.facts);
+        // RF-Brand — Logo + Brand-Farben für Render-Theme
+        setLogoUrl(json.logoUrl ?? "");
+        setBrandColors(json.brandColors ?? null);
         // Auto-Fill: Bild-URL → Bild-Quelle auf "url" umschalten
         if (json.imageUrl) {
           setCrawledImage(json.imageUrl);
@@ -1396,42 +1773,147 @@ function WebsiteUrlField({
           className={inputCls}
         />
         {crawling && (
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-700">
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-700">
             ⏳ Crawlt…
           </span>
         )}
       </div>
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 text-xs text-slate-600">{error}</p>}
       {websiteText && !crawling && (
-        <details className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs">
-          <summary className="cursor-pointer font-medium text-emerald-800">
+        <details className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs">
+          <summary className="cursor-pointer font-medium text-slate-800">
             ✓ {websiteText.length} Zeichen geladen — Vorschau
           </summary>
-          <p className="mt-1 max-h-32 overflow-y-auto text-emerald-900/80">
+          <p className="mt-1 max-h-32 overflow-y-auto text-slate-900/80">
             {websiteText}
           </p>
         </details>
       )}
       {crawledImage && !crawling && (
-        <div className="mt-2 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
+        <div className="mt-2 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-900">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={crawledImage}
             alt="Gecrawltes Produktbild"
-            className="h-12 w-12 rounded-md border border-emerald-300 object-cover"
+            className="h-12 w-12 rounded-md border border-slate-300 object-cover"
             onError={() => setCrawledImage(null)}
           />
           <div className="min-w-0 flex-1">
-            <p className="font-medium text-emerald-800">
+            <p className="font-medium text-slate-800">
               ✓ Produktbild {imageMirrored ? "gespeichert" : "übernommen"}
             </p>
-            <p className="truncate text-emerald-700/80">{crawledImage}</p>
-            <p className="text-emerald-700/60">
+            <p className="truncate text-slate-700/80">{crawledImage}</p>
+            <p className="text-slate-700/60">
               Wird als Produktbild-Overlay übers KI-Szenenbild komponiert.
             </p>
           </div>
         </div>
       )}
+      {(logoUrl || brandColors) && !crawling && (
+        <BrandSwatchesPanel
+          logoUrl={logoUrl}
+          brandColors={brandColors}
+          onChange={setBrandColors}
+          onClear={() => {
+            setLogoUrl("");
+            setBrandColors(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Brand-Style-Anzeige: Logo-Preview links, 4 Farb-Swatches rechts. Jeder
+ * Swatch ist ein color-input → User kann die extrahierten Werte direkt
+ * korrigieren, bevor das Form submitted wird.
+ */
+function BrandSwatchesPanel({
+  logoUrl,
+  brandColors,
+  onChange,
+  onClear,
+}: {
+  logoUrl: string;
+  brandColors:
+    | { primary: string; accent: string; background: string; text: string }
+    | null;
+  onChange: (
+    c: { primary: string; accent: string; background: string; text: string } | null,
+  ) => void;
+  onClear: () => void;
+}) {
+  const slots: Array<{
+    key: "primary" | "accent" | "background" | "text";
+    label: string;
+  }> = [
+    { key: "primary", label: "Primary" },
+    { key: "accent", label: "Accent" },
+    { key: "background", label: "BG" },
+    { key: "text", label: "Text" },
+  ];
+  return (
+    <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-900">
+      <div className="flex items-center justify-between">
+        <p className="font-medium text-slate-800">🎨 Brand-Style aus Logo</p>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[10px] text-slate-500 underline hover:text-slate-700"
+        >
+          Entfernen
+        </button>
+      </div>
+      <div className="mt-2 flex items-center gap-3">
+        {logoUrl && (
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white p-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={logoUrl}
+              alt="Logo"
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
+        )}
+        <div className="flex flex-1 flex-wrap gap-2">
+          {slots.map((s) => {
+            const v = brandColors?.[s.key] ?? "#FFFFFF";
+            return (
+              <label
+                key={s.key}
+                className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-1.5 py-1"
+              >
+                <input
+                  type="color"
+                  value={v}
+                  onChange={(e) => {
+                    const next = brandColors
+                      ? { ...brandColors, [s.key]: e.target.value }
+                      : {
+                          primary: "#000000",
+                          accent: "#000000",
+                          background: "#FFFFFF",
+                          text: "#111111",
+                          [s.key]: e.target.value,
+                        };
+                    onChange(next as typeof brandColors);
+                  }}
+                  className="h-5 w-5 cursor-pointer rounded border-0 bg-transparent p-0"
+                  aria-label={s.label}
+                />
+                <span className="text-[10px] tabular-nums text-slate-700">
+                  {s.label} · {v.toUpperCase()}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+      <p className="mt-2 text-[10px] text-slate-700/60">
+        Diese Farben werden beim Speichern in den Kampagnen-Ordner geschrieben
+        und vom Renderer als Theme verwendet.
+      </p>
     </div>
   );
 }
@@ -1439,13 +1921,18 @@ function WebsiteUrlField({
 function VariantCountField({
   error,
   initialValue,
+  onChange,
 }: {
   error?: string;
   initialValue?: number;
+  onChange?: (n: number) => void;
 }) {
   const [count, setCount] = useState(
     initialValue && initialValue >= 1 && initialValue <= 10 ? initialValue : 3,
   );
+  useEffect(() => {
+    onChange?.(count);
+  }, [count, onChange]);
   const PRESETS = [1, 3, 5, 10];
   return (
     <div>
@@ -1480,7 +1967,7 @@ function VariantCountField({
               className={
                 "rounded-md px-2 py-1 text-xs font-medium transition " +
                 (count === n
-                  ? "bg-blue-800 text-white shadow"
+                  ? "bg-slate-800 text-white shadow"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200")
               }
             >
@@ -1492,8 +1979,113 @@ function VariantCountField({
       <p className="mt-1 text-xs text-slate-500">
         Default: 3. Jede Variante = 1 API-Call parallel.
       </p>
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 text-xs text-slate-600">{error}</p>}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WizardStep — ein aufklappbarer Schritt im Generate-Akkordeon. Eingeklappte
+// Schritte zeigen eine 1-Zeilen-Zusammenfassung; ihre Felder bleiben per
+// `hidden` (display:none) IM DOM → Form-Daten + Auto-Save bleiben erhalten.
+// ---------------------------------------------------------------------------
+function WizardStep({
+  n,
+  title,
+  summary,
+  open,
+  onToggle,
+  children,
+}: {
+  n: number;
+  title: string;
+  summary?: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+      >
+        <span
+          className={
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold " +
+            (open ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600")
+          }
+        >
+          {n}
+        </span>
+        <span className="shrink-0 text-[14px] font-semibold text-slate-900">
+          {title}
+        </span>
+        {!open && summary ? (
+          <span className="min-w-0 flex-1 truncate text-[12px] text-slate-500">
+            {summary}
+          </span>
+        ) : (
+          <span className="flex-1" />
+        )}
+        <Icon
+          name="chevron-down"
+          className={
+            "size-4 shrink-0 text-slate-400 transition-transform " +
+            (open ? "rotate-180" : "")
+          }
+        />
+      </button>
+      <div className={open ? "space-y-4 border-t border-slate-200 p-4" : "hidden"}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PerVariantAngles — optional pro Variante einen festen Werbe-Angle wählen.
+// Leer = automatische Rotation (Default). Die Selects bleiben auch eingeklappt
+// im DOM und submitten als mehrfaches name="variantAngle" in Varianten-Reihen-
+// folge; der Server überschreibt damit die Auto-Rotation, wo gesetzt.
+// ---------------------------------------------------------------------------
+function PerVariantAngles({ count }: { count: number }) {
+  const n = Math.max(1, Math.min(10, count || 1));
+  return (
+    <details className="rounded-lg border border-[var(--color-line)] bg-white">
+      <summary className="cursor-pointer select-none rounded-lg px-3 py-2 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--color-surface)]">
+        Angle pro Variante
+        <span className="ml-2 text-[11px] font-normal text-[var(--color-muted)]">
+          optional — Standard: automatisch rotiert
+        </span>
+      </summary>
+      <div className="space-y-2 border-t border-slate-200 p-3">
+        <p className="text-[11px] text-slate-500">
+          Leer = Auto. Gewählter Angle gilt genau für diese Variante.
+        </p>
+        {Array.from({ length: n }).map((_, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="w-[68px] shrink-0 text-xs font-medium text-slate-600">
+              Variante {i + 1}
+            </span>
+            <select
+              name="variantAngle"
+              defaultValue=""
+              className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs focus:border-slate-700 focus:outline-none"
+              aria-label={`Angle für Variante ${i + 1}`}
+            >
+              <option value="">— Auto —</option>
+              {ANGLES.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -1549,17 +2141,14 @@ function ProductFactsCard({
     update({ [key]: arr.filter((_, i) => i !== idx) } as Partial<ProductFacts>);
   };
   return (
-    <details
-      open
-      className="rounded-2xl border border-emerald-200 bg-emerald-50/40"
-    >
-      <summary className="cursor-pointer select-none rounded-2xl px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100/50">
-        🧾 Produkt-Fakten (verbindlich im Prompt)
-        <span className="ml-2 text-xs font-normal text-emerald-700/70">
-          Crawl-Ergebnis — du kannst alles ändern
+    <details className="rounded-lg border border-[var(--color-line)] bg-white">
+      <summary className="cursor-pointer select-none rounded-lg px-3 py-2 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--color-surface)]">
+        Produkt-Fakten
+        <span className="ml-2 text-[11px] font-normal text-[var(--color-muted)]">
+          aus Crawl, editierbar
         </span>
       </summary>
-      <div className="space-y-2 border-t border-emerald-200 p-3 text-xs">
+      <div className="space-y-2 border-t border-slate-200 p-3 text-xs">
         <FactInput
           label="Produkt"
           value={facts.name}
@@ -1581,12 +2170,12 @@ function ProductFactsCard({
         </div>
 
         {/* C2 — Hero-Pflicht-Werte (Doc 3.1 · höchste CTR-Hebel) */}
-        <div className="rounded-md border border-amber-200 bg-amber-50/40 p-2">
+        <div className="rounded-md border border-slate-200 bg-slate-50/40 p-2">
           <div className="mb-1 flex items-baseline justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-900">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-900">
               🎯 Hero-Werte (höchster CTR-Hebel)
             </span>
-            <span className="text-[9px] text-amber-700/70">optional, aber +187 % CTR</span>
+            <span className="text-[9px] text-slate-700/70">optional, aber +187 % CTR</span>
           </div>
           <div className="space-y-1.5">
             <FactInput
@@ -1654,7 +2243,7 @@ function ProductFactsCard({
         <button
           type="button"
           onClick={() => onChange(null)}
-          className="mt-1 text-[10px] text-emerald-700/70 hover:text-red-700"
+          className="mt-1 text-[10px] text-slate-700/70 hover:text-slate-700"
         >
           ✕ Produktfakten entfernen
         </button>
@@ -1676,7 +2265,7 @@ function FactInput({
 }) {
   return (
     <label className="block">
-      <span className="block text-[10px] font-semibold uppercase tracking-wide text-emerald-900/70">
+      <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-900/70">
         {label}
       </span>
       <input
@@ -1684,7 +2273,7 @@ function FactInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="mt-0.5 block w-full rounded-md border border-emerald-200 bg-white px-2 py-1 text-xs focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+        className="mt-0.5 block w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
       />
     </label>
   );
@@ -1712,20 +2301,20 @@ function FactChips({
   };
   return (
     <div>
-      <span className="block text-[10px] font-semibold uppercase tracking-wide text-emerald-900/70">
+      <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-900/70">
         {label}
       </span>
       <div className="mt-0.5 flex flex-wrap gap-1">
         {values.map((v, i) => (
           <span
             key={`${v}-${i}`}
-            className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] text-emerald-900 ring-1 ring-emerald-200"
+            className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-900 ring-1 ring-slate-200"
           >
             {v}
             <button
               type="button"
               onClick={() => onRemove(i)}
-              className="text-emerald-600 hover:text-red-700"
+              className="text-slate-600 hover:text-slate-700"
               aria-label="Entfernen"
             >
               ×
@@ -1744,7 +2333,7 @@ function FactChips({
           }}
           onBlur={commit}
           placeholder={placeholder}
-          className="min-w-[120px] flex-1 rounded-md border border-emerald-200 bg-white px-2 py-0.5 text-[11px] focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          className="min-w-[120px] flex-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
         />
       </div>
     </div>
@@ -1828,7 +2417,7 @@ function FolderPicker({
             Noch keine Ordner in diesem Projekt.{" "}
             <a
               href={`/dashboard/projects/${projectId}`}
-              className="text-blue-700 hover:underline"
+              className="text-slate-700 hover:underline"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -1870,15 +2459,15 @@ function PlatformPicker({
               className={
                 "flex flex-col items-center justify-center rounded-lg border px-2 py-2 text-center transition-all duration-150 " +
                 (isActive
-                  ? "border-blue-700 bg-gradient-to-br from-blue-50 to-white shadow-md shadow-blue-900/10 ring-1 ring-blue-300"
-                  : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40")
+                  ? "border-slate-700 bg-gradient-to-br from-slate-50 to-white shadow-md shadow-slate-900/10 ring-1 ring-slate-300"
+                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/40")
               }
             >
               <span className="text-base leading-none">{p.emoji}</span>
               <span
                 className={
                   "mt-0.5 text-[11px] font-semibold " +
-                  (isActive ? "text-blue-900" : "text-slate-800")
+                  (isActive ? "text-slate-900" : "text-slate-800")
                 }
               >
                 {p.label}
@@ -1918,7 +2507,7 @@ function ImageVariantCountField({
             className={
               "rounded-md px-3 py-1 text-xs font-semibold transition " +
               (value === n
-                ? "bg-blue-800 text-white shadow"
+                ? "bg-slate-800 text-white shadow"
                 : "bg-slate-100 text-slate-700 hover:bg-slate-200")
             }
           >
@@ -1951,7 +2540,7 @@ function UrgencyToggle({
         type="checkbox"
         checked={value}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-600"
+        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-600"
       />
       <span>
         <span className="block text-sm font-medium text-slate-700">
@@ -1995,15 +2584,15 @@ function PersonaPicker({
               className={
                 "flex flex-col items-start gap-0.5 rounded-lg border px-2.5 py-2 text-left transition-all duration-150 " +
                 (isActive
-                  ? "border-blue-700 bg-gradient-to-br from-blue-50 to-white shadow-md shadow-blue-900/10 ring-1 ring-blue-300"
-                  : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40")
+                  ? "border-slate-700 bg-gradient-to-br from-slate-50 to-white shadow-md shadow-slate-900/10 ring-1 ring-slate-300"
+                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/40")
               }
             >
               <span className="text-base leading-none">{p.emoji}</span>
               <span
                 className={
                   "text-xs font-semibold leading-tight " +
-                  (isActive ? "text-blue-900" : "text-slate-800")
+                  (isActive ? "text-slate-900" : "text-slate-800")
                 }
               >
                 {p.label}
@@ -2046,7 +2635,7 @@ function PersonaOverride({
             <p className="text-xs font-medium text-slate-500">{label}</p>
             <p className="mt-0.5 truncate text-sm text-slate-800">
               {chipText}
-              <span className="ml-1.5 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-800">
+              <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-800">
                 Persona
               </span>
             </p>
@@ -2054,7 +2643,7 @@ function PersonaOverride({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="shrink-0 text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline"
+            className="shrink-0 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline"
           >
             ändern
           </button>
@@ -2087,7 +2676,7 @@ function AddressingField({
             className={
               "rounded px-3 py-1 font-semibold transition " +
               (value === a
-                ? "bg-blue-700 text-white shadow"
+                ? "bg-slate-700 text-white shadow"
                 : "text-slate-600 hover:text-slate-900")
             }
           >
@@ -2199,10 +2788,10 @@ function PersuasionLeversField({
               disabled={isDisabled}
               className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition ${
                 isOn
-                  ? "bg-blue-700 text-white ring-blue-700"
+                  ? "bg-slate-700 text-white ring-slate-700"
                   : isDisabled
                     ? "bg-slate-50 text-slate-400 ring-slate-200"
-                    : "bg-white text-slate-700 ring-slate-300 hover:bg-blue-50"
+                    : "bg-white text-slate-700 ring-slate-300 hover:bg-slate-50"
               }`}
             >
               {p.label}
@@ -2345,7 +2934,7 @@ function ImageSourceField({
               setError(null);
             }
           }}
-          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-600"
+          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-600"
         />
         <span>
           <span className="block text-sm font-medium text-slate-700">
@@ -2359,8 +2948,8 @@ function ImageSourceField({
       </label>
 
       {isOn && (
-        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
-          <div className="mb-2 inline-flex rounded-md border border-emerald-300 bg-white p-0.5 text-xs">
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/40 p-3">
+          <div className="mb-2 inline-flex rounded-md border border-slate-300 bg-white p-0.5 text-xs">
             {(["upload", "url"] as const).map((m) => (
               <button
                 key={m}
@@ -2372,8 +2961,8 @@ function ImageSourceField({
                 className={
                   "rounded px-2.5 py-1 font-semibold transition " +
                   (mode === m
-                    ? "bg-emerald-700 text-white"
-                    : "text-emerald-800 hover:bg-emerald-100")
+                    ? "bg-slate-700 text-white"
+                    : "text-slate-800 hover:bg-slate-100")
                 }
               >
                 {m === "upload" ? "📤 Upload" : "🔗 URL"}
@@ -2388,10 +2977,10 @@ function ImageSourceField({
                 accept="image/jpeg,image/png,image/webp"
                 onChange={handleFileChange}
                 disabled={uploading}
-                className="block w-full text-xs text-slate-700 file:mr-2 file:rounded-md file:border-0 file:bg-emerald-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-emerald-800 hover:file:bg-emerald-200 disabled:opacity-60"
+                className="block w-full text-xs text-slate-700 file:mr-2 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-800 hover:file:bg-slate-200 disabled:opacity-60"
               />
               {uploading && (
-                <p className="mt-1 text-xs text-emerald-700">⏳ Lädt hoch…</p>
+                <p className="mt-1 text-xs text-slate-700">⏳ Lädt hoch…</p>
               )}
               {!uploading && customImageUrl && (
                 <div className="mt-2 flex items-center gap-2">
@@ -2399,9 +2988,9 @@ function ImageSourceField({
                   <img
                     src={customImageUrl}
                     alt="Upload-Preview"
-                    className="h-16 w-16 rounded-md border border-emerald-300 object-cover"
+                    className="h-16 w-16 rounded-md border border-slate-300 object-cover"
                   />
-                  <span className="text-xs text-emerald-700">
+                  <span className="text-xs text-slate-700">
                     ✓ Wird in jede KI-Szene nativ eingewoben.
                   </span>
                 </div>
@@ -2424,12 +3013,12 @@ function ImageSourceField({
                   <img
                     src={customImageUrl}
                     alt="URL-Preview"
-                    className="h-16 w-16 rounded-md border border-emerald-300 object-cover"
+                    className="h-16 w-16 rounded-md border border-slate-300 object-cover"
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
                     }}
                   />
-                  <span className="text-xs text-emerald-700">
+                  <span className="text-xs text-slate-700">
                     Wird in jede KI-Szene nativ eingewoben.
                   </span>
                 </div>
@@ -2439,7 +3028,7 @@ function ImageSourceField({
         </div>
       )}
 
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-xs text-slate-600">{error}</p>}
     </div>
   );
 }
@@ -2488,7 +3077,7 @@ function Field({
     <div>
       <label className="block text-sm font-medium text-slate-700">{label}</label>
       <div className="mt-1">{children}</div>
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 text-xs text-slate-600">{error}</p>}
     </div>
   );
 }
@@ -2520,7 +3109,7 @@ function CharCountTextarea({
       <span
         className={
           "absolute bottom-1.5 right-2 text-[10px] tabular-nums " +
-          (value.length > maxLength * 0.9 ? "text-amber-600" : "text-slate-400")
+          (value.length > maxLength * 0.9 ? "text-slate-600" : "text-slate-400")
         }
       >
         {value.length}/{maxLength}
@@ -2556,7 +3145,7 @@ function CharCountInput({
       <span
         className={
           "pointer-events-none absolute inset-y-0 right-2 flex items-center text-[10px] tabular-nums " +
-          (value.length > maxLength * 0.9 ? "text-amber-600" : "text-slate-400")
+          (value.length > maxLength * 0.9 ? "text-slate-600" : "text-slate-400")
         }
       >
         {value.length}/{maxLength}
@@ -2566,4 +3155,4 @@ function CharCountInput({
 }
 
 const inputCls =
-  "block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700";
+  "block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700";

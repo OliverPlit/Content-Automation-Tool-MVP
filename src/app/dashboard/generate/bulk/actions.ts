@@ -138,7 +138,18 @@ export async function startBulkGenerate(
         const adCopy = {
           headline: v.headline,
           subline: v.subline,
-          variants: result.variants.map((va) => ({ body: va.body, cta: va.cta })),
+          // Per-Variante-Texte MITSCHREIBEN. Sonst erben im Studio alle
+          // Varianten die Root-Headline (= die von Variante 1) und sehen
+          // identisch aus, obwohl die Generierung pro Variante eine eigene
+          // Headline/Subline liefert. Die Lese-Seite (adCopyLooseSchema +
+          // Workspace/Render) bevorzugt den Variant-Wert und fällt nur ohne
+          // ihn auf root zurück — fehlt er hier, kollabieren alle aufs root.
+          variants: result.variants.map((va) => ({
+            body: va.body,
+            cta: va.cta,
+            headline: va.headline,
+            subline: va.subline,
+          })),
           imagePrompt: v.imagePrompt,
         };
         const { data: creativeRow, error: creativeErr } = await supabase
