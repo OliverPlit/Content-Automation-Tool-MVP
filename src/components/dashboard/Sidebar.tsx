@@ -5,14 +5,14 @@ import { usePathname } from "next/navigation";
 
 import { Icon, type IconName } from "@/components/icon";
 
+// 4 Top-Level-Sektionen, mappen auf den Workflow:
+// Erstellen → Studio (= Library für Editing) → Plan (= Projekte für Schedule) → Einstellungen
 const nav: { href: string; label: string; icon: IconName }[] = [
-  { href: "/dashboard", label: "Übersicht", icon: "rectangle-grid" },
-  { href: "/dashboard/generate", label: "Generate", icon: "sparkle" },
-  { href: "/dashboard/library", label: "Library", icon: "rectangle-stack" },
-  { href: "/dashboard/gallery", label: "Galerie", icon: "image" },
-  { href: "/dashboard/images/new", label: "Bild generieren", icon: "palette" },
-  { href: "/dashboard/projects", label: "Projekte", icon: "folder" },
-  { href: "/dashboard/templates", label: "Templates", icon: "file" },
+  { href: "/dashboard/generate", label: "Erstellen", icon: "sparkle" },
+  { href: "/dashboard/library", label: "Studio", icon: "rectangle-stack" },
+  { href: "/dashboard/projects", label: "Plan", icon: "calendar" },
+  { href: "/dashboard/insights", label: "Insights", icon: "bolt" },
+  { href: "/dashboard/settings", label: "Einstellungen", icon: "settings" },
 ];
 
 export function Sidebar() {

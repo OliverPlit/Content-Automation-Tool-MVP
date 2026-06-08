@@ -102,9 +102,9 @@ export function LibraryFocusBoard({
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-blue-900/5">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-slate-900/5">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-blue-900">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900">
           🎯 Schnell-Übersicht ({variantCount} Var. × {FOCUS_KIND_ORDER_LIBRARY.length} Formate)
         </h2>
         <p className="text-[10px] text-slate-500">
@@ -145,8 +145,8 @@ export function LibraryFocusBoard({
               className={
                 "group relative aspect-[4/5] overflow-hidden rounded-md border bg-slate-900 transition " +
                 (r.id === focused?.id
-                  ? "border-blue-700 ring-2 ring-blue-300"
-                  : "border-slate-200 hover:border-blue-400")
+                  ? "border-slate-700 ring-2 ring-slate-300"
+                  : "border-slate-200 hover:border-slate-400")
               }
               title={`V${r.variantIndex + 1} · ${r.templateLabel}`}
             >
@@ -308,7 +308,7 @@ function NeighborTile({
     <button
       type="button"
       onClick={() => onSelect(render.id)}
-      className="flex flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-2 hover:border-blue-400 hover:bg-blue-50"
+      className="flex flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-2 hover:border-slate-400 hover:bg-slate-50"
       title={`V${render.variantIndex + 1} · ${render.templateLabel}`}
     >
       <span className="text-xs text-slate-500">{dir}</span>
@@ -347,7 +347,7 @@ function VariantBar({
     <button
       type="button"
       onClick={() => onSelect(render.id)}
-      className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 hover:border-blue-400 hover:bg-blue-50"
+      className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 hover:border-slate-400 hover:bg-slate-50"
     >
       <span className="text-[10px] font-semibold text-slate-500">{dir}</span>
       <span className="text-[10px] font-semibold text-slate-700">

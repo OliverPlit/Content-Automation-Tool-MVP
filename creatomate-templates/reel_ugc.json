@@ -1,0 +1,143 @@
+{
+  "output_format": "mp4",
+  "width": 1080,
+  "height": 1920,
+  "frame_rate": 30,
+  "duration": 6,
+  "fill_color": "#0f172a",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "image",
+      "track": 1,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": [
+        { "time": 0, "value": "48%" },
+        { "time": 6, "value": "52%" }
+      ],
+      "width": "118%",
+      "height": "118%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fit": "cover",
+      "source": "https://creatomate.com/files/assets/b5dee2e5-9e1a-4d62-9c2c-6e1a4e3f0e6e"
+    },
+    {
+      "name": "Headline",
+      "type": "text",
+      "track": 3,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "14%",
+      "width": "84%",
+      "height": "16%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "Das benutze ich jeden Tag 👇",
+      "font_family": "Inter",
+      "font_weight": "800",
+      "font_size_minimum": 40,
+      "font_size_maximum": 88,
+      "fill_color": "#ffffff",
+      "text_wrap": true,
+      "text_align": "center",
+      "line_height": "104%",
+      "stroke_color": "rgba(15,23,42,0.85)",
+      "stroke_width": "1.2 vmin",
+      "shadow_color": "rgba(0,0,0,0.5)",
+      "shadow_blur": 18,
+      "shadow_y": 3,
+      "animations": [
+        { "time": 0.2, "duration": 0.6, "easing": "quadratic-out", "type": "text-slide", "scope": "split-clip", "split": "word", "direction": "down" }
+      ]
+    },
+    {
+      "name": "Subtitle-Box",
+      "type": "shape",
+      "track": 4,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "80%",
+      "width": "90%",
+      "height": "11%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fill_color": "rgba(15,23,42,0.78)",
+      "border_radius": "24 px",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z",
+      "animations": [
+        { "time": 1, "duration": 0.4, "easing": "quadratic-out", "type": "fade" }
+      ]
+    },
+    {
+      "name": "Subline",
+      "type": "text",
+      "track": 5,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "80%",
+      "width": "84%",
+      "height": "10%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "Top-Qualität — und dabei günstiger als gedacht.",
+      "font_family": "Inter",
+      "font_weight": "600",
+      "font_size_minimum": 28,
+      "font_size_maximum": 52,
+      "fill_color": "#ffffff",
+      "text_align": "center",
+      "text_wrap": true,
+      "animations": [
+        { "time": 1.05, "duration": 0.5, "easing": "linear", "type": "fade" }
+      ]
+    },
+    {
+      "name": "CTA-Box",
+      "type": "shape",
+      "track": 6,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "92%",
+      "width": "58%",
+      "height": "7.5%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fill_color": "#FFD400",
+      "border_radius": "999 vmin",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z",
+      "animations": [
+        { "time": 3.8, "duration": 0.5, "easing": "quadratic-out", "type": "scale", "fade": true, "scope": "element", "start_scale": "84%", "end_scale": "100%" }
+      ]
+    },
+    {
+      "name": "CTA",
+      "type": "text",
+      "track": 7,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "92%",
+      "width": "52%",
+      "height": "7.5%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "Link in Bio",
+      "font_family": "Inter",
+      "font_weight": "700",
+      "font_size_minimum": 26,
+      "font_size_maximum": 48,
+      "fill_color": "#0f172a",
+      "text_align": "center",
+      "animations": [
+        { "time": 3.95, "duration": 0.4, "easing": "linear", "type": "fade" }
+      ]
+    }
+  ]
+}

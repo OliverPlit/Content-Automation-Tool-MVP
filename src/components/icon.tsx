@@ -25,6 +25,7 @@ type IconName =
   | "plus"
   | "minus"
   | "dot"
+  | "ellipsis-vertical"
   // Objekte
   | "folder"
   | "folder-open"
@@ -81,6 +82,13 @@ const iconPaths: Record<IconName, React.ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
   minus: <path d="M5 12h14" />,
   dot: <circle cx="12" cy="12" r="3" />,
+  "ellipsis-vertical": (
+    <>
+      <circle cx="12" cy="6" r="1.2" />
+      <circle cx="12" cy="12" r="1.2" />
+      <circle cx="12" cy="18" r="1.2" />
+    </>
+  ),
 
   folder: (
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />

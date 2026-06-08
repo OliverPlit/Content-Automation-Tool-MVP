@@ -8,15 +8,27 @@ import * as cheerio from "cheerio";
 import { z } from "zod";
 
 import { openai } from "@/lib/ai/openai-client";
+import { extractBrandColors, normalizeHex, type BrandColors } from "./brand-colors";
+import { detectLogoFromHtml } from "./logo-detect";
 
 // Doc 6.2 — strukturierte Produktfakten als verbindlicher Prompt-Kontext.
 // Pflicht: name + mindestens eines aus {price, specs, oemApprovals}.
-export const scrapedProductSchema = z.object({
+// Erweitert um Brand-Style-Felder (Logo + Farben), die aus dem Logo der
+// gecrawlten Seite extrahiert werden und ins Render-Theme einfließen.
+export const brandColorsSchema = z.object({
+  primary: z.string(),
+  accent: z.string(),
+  background: z.string(),
+  text: z.string(),
+});
+
+// LLM-Output-Schema (OpenAI Structured Outputs verlangt alle Felder
+// required + keine .nullable() — daher kein logoUrl/brandColors hier).
+const llmScrapedSchema = z.object({
   name: z.string().max(200),
   keyMessage: z.string().max(300),
   audience: z.string().max(200),
   productHint: z.string().max(300),
-  // Phase B (Doc 6.2) — strukturierte Produktfakten
   price: z.string().max(80).default(""),
   gebinde: z.string().max(80).default(""),
   specs: z.array(z.string().max(80)).max(8).default([]),
@@ -25,7 +37,15 @@ export const scrapedProductSchema = z.object({
   compatibleMachines: z.array(z.string().max(60)).max(8).default([]),
   imageUrls: z.array(z.string()).max(8),
 });
+
+// Public-Schema (LLM-Felder + Brand-Style, das wir nach dem LLM-Call
+// serverseitig anreichern).
+export const scrapedProductSchema = llmScrapedSchema.extend({
+  logoUrl: z.string().default(""),
+  brandColors: brandColorsSchema.nullable().default(null),
+});
 export type ScrapedProduct = z.infer<typeof scrapedProductSchema>;
+export type { BrandColors };
 
 const PRIVATE_HOSTS = [
   "localhost",
@@ -129,6 +149,28 @@ export async function scrapeProductPage(
     if (src && !src.startsWith("data:")) imageUrls.add(toAbs(src, url));
   });
 
+  // Logo-URL detecten: in dieser Reihenfolge ausprobieren:
+  //   1. JSON-LD Organization.logo
+  //   2. <img class/alt/id="logo"> im <header>
+  //   3. <link rel="icon"|"apple-touch-icon"> größtes
+  //   4. og:image als Fallback
+  // (Implementierung in scrape/logo-detect.ts — wird auch von /api/crawl-website
+  //  geteilt, damit beide Routen denselben Brand-Style liefern.)
+  const logoUrl = detectLogoFromHtml(html, url.toString());
+
+  // Brand-Colors aus dem Logo extrahieren (parallel zum LLM-Call laufen
+  // lassen, weil beide ~1-3 Sek brauchen).
+  const brandColorsPromise: Promise<BrandColors | null> = logoUrl
+    ? extractBrandColors(logoUrl).catch(() => null)
+    : Promise.resolve(null);
+
+  // CSS-Vorab-Scan: <meta name="theme-color"> liefert einen sauberen
+  // Brand-Primary, wenn die Seite einen gesetzt hat. Wir nehmen den als
+  // Override für `primary` wenn vorhanden — Logo-Pixel-Sampling kann bei
+  // mehrfarbigen Logos daneben treffen.
+  const themeColorRaw = $('meta[name="theme-color"]').attr("content") ?? "";
+  const themeColor = themeColorRaw ? normalizeHex(themeColorRaw) : null;
+
   // LLM-Veredelung
   const emptyFacts = {
     price: "",
@@ -139,8 +181,33 @@ export async function scrapeProductPage(
     compatibleMachines: [] as string[],
   };
 
+  const finalizeBrand = async (): Promise<{
+    logoUrl: string;
+    brandColors: BrandColors | null;
+  }> => {
+    const colors = await brandColorsPromise;
+    if (!colors) {
+      return {
+        logoUrl: logoUrl || "",
+        brandColors: themeColor
+          ? { primary: themeColor, accent: themeColor, background: "#FFFFFF", text: "#111111" }
+          : null,
+      };
+    }
+    return {
+      logoUrl: logoUrl || "",
+      brandColors: {
+        primary: themeColor ?? colors.primary,
+        accent: colors.accent,
+        background: colors.background,
+        text: colors.text,
+      },
+    };
+  };
+
   if (!process.env.OPENAI_API_KEY) {
     // Fallback ohne LLM
+    const brand = await finalizeBrand();
     return {
       ok: true,
       data: {
@@ -150,6 +217,7 @@ export async function scrapeProductPage(
         productHint: "",
         ...emptyFacts,
         imageUrls: [...imageUrls].slice(0, 8),
+        ...brand,
       },
     };
   }
@@ -157,7 +225,7 @@ export async function scrapeProductPage(
   try {
     const { object } = await generateObject({
       model: openai("gpt-4o-mini"),
-      schema: scrapedProductSchema,
+      schema: llmScrapedSchema,
       system: `Du bist Marketing-Analyst. Aus rohen Produktdaten extrahierst du strukturierte Felder für ein Ad-Creative-Tool. Antworten auf Deutsch, kurz und prägnant.
 
 Pflicht-Verhalten:
@@ -179,10 +247,12 @@ Body-Auszug: ${bodyText}
 Image-Kandidaten: ${[...imageUrls].slice(0, 12).join("\n")}`,
       temperature: 0.2,
     });
-    return { ok: true, data: object };
+    const brand = await finalizeBrand();
+    return { ok: true, data: { ...object, ...brand } };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "LLM-Fehler.";
     // Fallback bei LLM-Fehler
+    const brand = await finalizeBrand();
     return {
       ok: true,
       data: {
@@ -192,6 +262,7 @@ Image-Kandidaten: ${[...imageUrls].slice(0, 12).join("\n")}`,
         productHint: "",
         ...emptyFacts,
         imageUrls: [...imageUrls].slice(0, 8),
+        ...brand,
       },
     };
   }
@@ -204,3 +275,4 @@ function toAbs(src: string, base: URL): string {
     return src;
   }
 }
+

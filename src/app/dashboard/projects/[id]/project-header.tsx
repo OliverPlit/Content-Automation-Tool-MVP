@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 
+import { Icon } from "@/components/icon";
 import {
   type ProjectActionState,
   deleteProject,
@@ -40,12 +41,12 @@ export function ProjectHeader({
 
   return (
     <section className="mt-4">
-      <div className="rounded-2xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 px-6 py-7 text-white shadow-xl shadow-blue-900/20">
+      <div className="rounded-xl border border-[var(--color-line)] bg-white px-6 py-5">
         {editing ? (
           <form action={formAction} className="space-y-3">
             <input type="hidden" name="id" value={id} />
             <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-wider text-blue-200">
+              <label className="block text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
                 Projekt-Name
               </label>
               <input
@@ -56,11 +57,11 @@ export function ProjectHeader({
                 value={localName}
                 onChange={(e) => setLocalName(e.target.value)}
                 autoFocus
-                className="mt-1 block w-full rounded-md border border-blue-700 bg-blue-950/40 px-3 py-2 text-base font-semibold text-white placeholder-blue-300 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                className="mt-1 block w-full rounded-lg border border-[var(--color-line)] px-3 py-2 text-[15px] font-semibold tracking-tight text-[var(--foreground)] focus:border-[var(--foreground)] focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-wider text-blue-200">
+              <label className="block text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
                 Beschreibung
               </label>
               <input
@@ -70,11 +71,11 @@ export function ProjectHeader({
                 value={localDesc}
                 onChange={(e) => setLocalDesc(e.target.value)}
                 placeholder="optional"
-                className="mt-1 block w-full rounded-md border border-blue-700 bg-blue-950/40 px-3 py-2 text-sm text-white placeholder-blue-300 focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                className="mt-1 block w-full rounded-lg border border-[var(--color-line)] px-3 py-2 text-[13px] text-[var(--foreground)] focus:border-[var(--foreground)] focus:outline-none"
               />
             </div>
             {state.error && (
-              <p className="rounded-md bg-red-100/10 px-3 py-2 text-xs text-red-200">
+              <p className="rounded-lg bg-slate-50 px-3 py-2 text-[12px] text-slate-700">
                 {state.error}
               </p>
             )}
@@ -82,7 +83,7 @@ export function ProjectHeader({
               <button
                 type="submit"
                 disabled={pending}
-                className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-blue-900 shadow hover:shadow-md disabled:opacity-60"
+                className="rounded-full bg-[var(--foreground)] px-3.5 py-1.5 text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-50"
               >
                 {pending ? "Speichere…" : "Speichern"}
               </button>
@@ -93,7 +94,7 @@ export function ProjectHeader({
                   setLocalDesc(initialDescription);
                   setEditing(false);
                 }}
-                className="rounded-md border border-blue-300/40 bg-transparent px-3 py-1.5 text-xs font-medium text-blue-100 hover:bg-white/10"
+                className="rounded-full border border-[var(--color-line)] bg-white px-3.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--color-surface)]"
               >
                 Abbrechen
               </button>
@@ -102,20 +103,20 @@ export function ProjectHeader({
         ) : (
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <h1 className="text-3xl font-bold tracking-tight">
+              <h1 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
                 {initialName}
               </h1>
               {initialDescription ? (
-                <p className="mt-1 max-w-2xl text-sm text-blue-100">
+                <p className="mt-1 max-w-2xl text-[14px] text-[var(--color-muted)]">
                   {initialDescription}
                 </p>
               ) : (
-                <p className="mt-1 text-sm italic text-blue-200/70">
+                <p className="mt-1 text-[14px] italic text-[var(--color-muted)]">
                   Keine Beschreibung
                 </p>
               )}
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-blue-100">
-                <span className="rounded-full bg-white/10 px-2.5 py-0.5 font-semibold">
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px] text-[var(--color-muted)]">
+                <span className="rounded-full bg-[var(--color-surface)] px-2.5 py-0.5 font-medium text-[var(--foreground)]">
                   {creativeCount} Creative{creativeCount === 1 ? "" : "s"}
                 </span>
                 <span>
@@ -126,9 +127,10 @@ export function ProjectHeader({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="shrink-0 rounded-md border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-white px-3.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--color-surface)]"
             >
-              ✏️ Bearbeiten
+              <Icon name="pencil" className="size-3.5" />
+              Bearbeiten
             </button>
           </div>
         )}
@@ -150,11 +152,11 @@ function DangerZone({
   const [mode, setMode] = useState<"keep" | "cascade">("keep");
 
   return (
-    <section className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4">
+    <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-red-900">Gefahrenzone</p>
-          <p className="text-xs text-red-700">
+          <p className="text-[13px] font-medium text-slate-900">Gefahrenzone</p>
+          <p className="text-[12px] text-slate-700/90">
             Projekt löschen entfernt die Zuordnung — die Creatives bleiben
             standardmäßig erhalten und landen in &bdquo;Ohne Projekt&ldquo;.
           </p>
@@ -163,7 +165,7 @@ function DangerZone({
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+            className="rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50"
           >
             Projekt löschen
           </button>
@@ -172,7 +174,7 @@ function DangerZone({
             <select
               value={mode}
               onChange={(e) => setMode(e.target.value as "keep" | "cascade")}
-              className="rounded-md border border-red-300 bg-white px-2 py-1 text-xs text-red-800"
+              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[12px] text-slate-900"
             >
               <option value="keep">Creatives behalten (empfohlen)</option>
               <option value="cascade">
@@ -184,7 +186,7 @@ function DangerZone({
             <button
               type="button"
               onClick={() => setConfirming(false)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              className="rounded-full border border-[var(--color-line)] bg-white px-3.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--color-surface)]"
             >
               Abbrechen
             </button>
@@ -193,7 +195,7 @@ function DangerZone({
               <input type="hidden" name="mode" value={mode} />
               <button
                 type="submit"
-                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
+                className="rounded-full bg-slate-600 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-slate-500"
               >
                 Endgültig löschen
               </button>

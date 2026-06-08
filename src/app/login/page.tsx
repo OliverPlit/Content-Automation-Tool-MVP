@@ -9,22 +9,22 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-blue-50 to-slate-200 px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white/95 p-8 shadow-2xl shadow-blue-900/10 backdrop-blur">
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200 px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white/95 p-8 shadow-2xl shadow-slate-900/10 backdrop-blur">
         <div className="mb-6 flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-sky-400 to-blue-800 text-base font-bold text-white shadow-md shadow-blue-900/30">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-slate-400 to-slate-800 text-base font-bold text-white shadow-md shadow-slate-900/30">
             C
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-900">Login</h1>
-            <p className="text-[10px] uppercase tracking-wider text-blue-700">
+            <p className="text-[10px] uppercase tracking-wider text-slate-700">
               Content-Tool
             </p>
           </div>
         </div>
 
         {error && (
-          <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
             {error}
           </p>
         )}
@@ -38,7 +38,7 @@ export default async function LoginPage({
               name="email"
               type="email"
               required
-              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
             />
           </div>
           <div>
@@ -49,12 +49,12 @@ export default async function LoginPage({
               name="password"
               type="password"
               required
-              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+              className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
             />
           </div>
           <button
             type="submit"
-            className="w-full rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-900/40"
+            className="w-full rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-slate-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-slate-900/40"
           >
             Anmelden
           </button>
@@ -64,7 +64,7 @@ export default async function LoginPage({
           Noch kein Account?{" "}
           <Link
             href="/signup"
-            className="font-medium text-blue-800 hover:text-blue-950 hover:underline"
+            className="font-medium text-slate-800 hover:text-slate-950 hover:underline"
           >
             Registrieren
           </Link>

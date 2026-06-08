@@ -1,0 +1,195 @@
+{
+  "output_format": "mp4",
+  "width": 1920,
+  "height": 1080,
+  "frame_rate": 30,
+  "duration": 6,
+  "fill_color": "#0f172a",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "image",
+      "track": 1,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "50%",
+      "width": [
+        { "time": 0, "value": "106%" },
+        { "time": 6, "value": "116%" }
+      ],
+      "height": [
+        { "time": 0, "value": "106%" },
+        { "time": 6, "value": "116%" }
+      ],
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fit": "cover",
+      "source": "https://creatomate.com/files/assets/b5dee2e5-9e1a-4d62-9c2c-6e1a4e3f0e6e"
+    },
+    {
+      "name": "Scrim",
+      "type": "shape",
+      "track": 2,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "50%",
+      "width": "100%",
+      "height": "100%",
+      "fill_color": "rgba(15,23,42,0.25)",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z"
+    },
+    {
+      "name": "Panel",
+      "type": "shape",
+      "track": 3,
+      "time": 0,
+      "duration": null,
+      "x": "0%",
+      "y": "50%",
+      "width": "52%",
+      "height": "100%",
+      "x_anchor": "0%",
+      "y_anchor": "50%",
+      "fill_color": "rgba(15,23,42,0.82)",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z",
+      "animations": [
+        { "time": 0, "duration": 0.5, "easing": "quadratic-out", "type": "slide", "direction": "left", "distance": "30%" }
+      ]
+    },
+    {
+      "name": "Logo",
+      "type": "text",
+      "track": 4,
+      "time": 0,
+      "duration": null,
+      "x": "6%",
+      "y": "15%",
+      "width": "40%",
+      "height": "9%",
+      "x_anchor": "0%",
+      "y_anchor": "50%",
+      "text": "WODOIL",
+      "font_family": "Oswald",
+      "font_weight": "700",
+      "font_size": "5.5 vmin",
+      "letter_spacing": "8%",
+      "fill_color": "#ffffff",
+      "text_align": "left",
+      "animations": [
+        { "time": 0.2, "duration": 0.5, "easing": "linear", "type": "fade" }
+      ]
+    },
+    {
+      "name": "Accent-Color",
+      "type": "shape",
+      "track": 5,
+      "time": 0,
+      "duration": null,
+      "x": "6%",
+      "y": "24%",
+      "width": "10%",
+      "height": "1.2%",
+      "x_anchor": "0%",
+      "y_anchor": "50%",
+      "fill_color": "#FFD400",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z",
+      "animations": [
+        { "time": 0.4, "duration": 0.5, "easing": "quadratic-out", "type": "wipe", "x_anchor": "0%" }
+      ]
+    },
+    {
+      "name": "Headline",
+      "type": "text",
+      "track": 6,
+      "time": 0,
+      "duration": null,
+      "x": "6%",
+      "y": "42%",
+      "width": "44%",
+      "height": "30%",
+      "x_anchor": "0%",
+      "y_anchor": "50%",
+      "text": "DAS ÖL FÜR MODERNSTE LANDMASCHINEN",
+      "font_family": "Oswald",
+      "font_weight": "700",
+      "font_size_minimum": 48,
+      "font_size_maximum": 110,
+      "fill_color": "#ffffff",
+      "text_wrap": true,
+      "text_align": "left",
+      "line_height": "94%",
+      "letter_spacing": "-1%",
+      "animations": [
+        { "time": 0.5, "duration": 0.8, "easing": "quadratic-out", "type": "text-slide", "scope": "split-clip", "split": "line", "direction": "up" }
+      ]
+    },
+    {
+      "name": "Subline",
+      "type": "text",
+      "track": 7,
+      "time": 0,
+      "duration": null,
+      "x": "6%",
+      "y": "66%",
+      "width": "44%",
+      "height": "8%",
+      "x_anchor": "0%",
+      "y_anchor": "50%",
+      "text": "Hochwertige Öle · Fette · Additive — seit 1946",
+      "font_family": "Inter",
+      "font_weight": "500",
+      "font_size_minimum": 24,
+      "font_size_maximum": 48,
+      "fill_color": "#FFD400",
+      "text_align": "left",
+      "text_wrap": true,
+      "animations": [
+        { "time": 1.3, "duration": 0.6, "easing": "quadratic-out", "type": "fade" }
+      ]
+    },
+    {
+      "name": "CTA-Box",
+      "type": "shape",
+      "track": 9,
+      "time": 0,
+      "duration": null,
+      "x": "6%",
+      "y": "84%",
+      "width": "30%",
+      "height": "10%",
+      "x_anchor": "0%",
+      "y_anchor": "50%",
+      "fill_color": "#FFD400",
+      "border_radius": "999 vmin",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z",
+      "animations": [
+        { "time": 4, "duration": 0.5, "easing": "quadratic-out", "type": "scale", "fade": true, "scope": "element", "start_scale": "82%", "end_scale": "100%" }
+      ]
+    },
+    {
+      "name": "CTA",
+      "type": "text",
+      "track": 10,
+      "time": 0,
+      "duration": null,
+      "x": "21%",
+      "y": "84%",
+      "width": "26%",
+      "height": "10%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "Jetzt shoppen",
+      "font_family": "Inter",
+      "font_weight": "700",
+      "font_size_minimum": 24,
+      "font_size_maximum": 44,
+      "fill_color": "#0f172a",
+      "text_align": "center",
+      "animations": [
+        { "time": 4.15, "duration": 0.4, "easing": "linear", "type": "fade" }
+      ]
+    }
+  ]
+}

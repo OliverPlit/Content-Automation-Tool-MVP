@@ -244,6 +244,12 @@ export async function moveCreative(
 
   if (error) return { ok: false, error: error.message };
 
+  // Breit revalidieren, damit das Creative SOFORT aus dem ALTEN Ordner/Projekt
+  // verschwindet (nicht nur im Ziel auftaucht). Ein Creative hat genau ein
+  // folder_id — die „in mehreren Ordnern"-Optik kam rein vom Stale-Cache der
+  // Quell-Ansicht, die vorher nicht revalidiert wurde.
+  revalidatePath("/dashboard/library", "layout");
+  revalidatePath("/dashboard/projects", "layout");
   if (parsed.data.redirectPath) {
     revalidatePath(parsed.data.redirectPath);
   }

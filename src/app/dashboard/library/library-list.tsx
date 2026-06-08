@@ -9,9 +9,9 @@ import { type UpdateState, updateHeader } from "./actions";
 
 const statusStyle: Record<string, string> = {
   pending: "bg-slate-100 text-slate-700",
-  processing: "bg-blue-50 text-blue-700",
-  completed: "bg-emerald-50 text-emerald-700",
-  failed: "bg-red-50 text-red-700",
+  processing: "bg-slate-50 text-slate-700",
+  completed: "bg-slate-50 text-slate-700",
+  failed: "bg-slate-50 text-slate-700",
 };
 
 export type LibraryItem = {
@@ -129,19 +129,19 @@ export function LibraryList({
 
   return (
     <div>
-      <div className="sticky top-0 z-10 -mx-2 mb-4 rounded-2xl bg-white/70 px-3 py-3 shadow-sm shadow-blue-900/5 ring-1 ring-slate-200/60 backdrop-blur-md">
+      <div className="sticky top-0 z-10 -mx-2 mb-4 rounded-2xl bg-white/70 px-3 py-3 shadow-sm shadow-slate-900/5 ring-1 ring-slate-200/60 backdrop-blur-md">
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="🔍 Suchen in Headline, Subline, Prompt…"
-            className="min-w-[240px] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="min-w-[240px] flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
           />
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortKey)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
           >
             <option value="newest">Neueste zuerst</option>
             <option value="oldest">Älteste zuerst</option>
@@ -151,13 +151,13 @@ export function LibraryList({
             <select
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+              className="rounded-lg border border-[var(--color-line)] bg-white px-3 py-1.5 text-[13px] focus:border-[var(--foreground)] focus:outline-none"
             >
-              <option value="all">📁 Alle Projekte</option>
-              <option value="none">📁 Ohne Projekt</option>
+              <option value="all">Alle Projekte</option>
+              <option value="none">Ohne Projekt</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
-                  📁 {p.name}
+                  {p.name}
                 </option>
               ))}
             </select>
@@ -285,8 +285,8 @@ function Chip({
 }) {
   const activeCls =
     tone === "format"
-      ? "bg-gradient-to-br from-sky-500 to-blue-700 text-white shadow-md shadow-blue-900/20"
-      : "bg-gradient-to-br from-blue-800 to-blue-950 text-white shadow-md shadow-blue-900/30";
+      ? "bg-gradient-to-br from-slate-500 to-slate-700 text-white shadow-md shadow-slate-900/20"
+      : "bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-md shadow-slate-900/30";
   return (
     <button
       type="button"
@@ -295,7 +295,7 @@ function Chip({
         "rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150 " +
         (active
           ? activeCls
-          : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-blue-50 hover:ring-blue-300")
+          : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:ring-slate-300")
       }
     >
       {children}
@@ -308,7 +308,7 @@ function Chip({
 // ---------------------------------------------------------------------------
 function ItemRow({ item }: { item: LibraryItem }) {
   return (
-    <div className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-blue-900/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-900/10">
+    <div className="flex gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-slate-900/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-xl hover:shadow-slate-900/10">
       <Link
         href={`/dashboard/library/${item.id}`}
         className="shrink-0"
@@ -371,7 +371,7 @@ function ItemRow({ item }: { item: LibraryItem }) {
 // ---------------------------------------------------------------------------
 function ItemCard({ item }: { item: LibraryItem }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md shadow-blue-900/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-900/10">
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md shadow-slate-900/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-xl hover:shadow-slate-900/10">
       <Link
         href={`/dashboard/library/${item.id}`}
         className="block aspect-square w-full overflow-hidden bg-slate-100"
@@ -414,7 +414,7 @@ function ItemCard({ item }: { item: LibraryItem }) {
               </span>
               <Link
                 href={`/dashboard/library/${item.id}`}
-                className="font-medium text-blue-700 hover:text-blue-900"
+                className="font-medium text-slate-700 hover:text-slate-900"
               >
                 Öffnen →
               </Link>
@@ -425,7 +425,7 @@ function ItemCard({ item }: { item: LibraryItem }) {
             <p className="truncate text-sm text-slate-900">{item.prompt}</p>
             <Link
               href={`/dashboard/library/${item.id}`}
-              className="mt-auto pt-3 text-xs font-medium text-blue-700 hover:text-blue-900"
+              className="mt-auto pt-3 text-xs font-medium text-slate-700 hover:text-slate-900"
             >
               Öffnen →
             </Link>
@@ -503,10 +503,10 @@ function QuickEditableHeadline({
               e.stopPropagation();
               setEditing(true);
             }}
-            className="shrink-0 rounded border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700"
+            className="shrink-0 rounded border border-[var(--color-line)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--foreground)]"
             aria-label="Headline bearbeiten"
           >
-            ✏️ Edit
+            Edit
           </button>
         </div>
         <p className="mt-0.5 truncate text-sm text-slate-600">
@@ -532,10 +532,10 @@ function QuickEditableHeadline({
         value={localHeadline}
         onChange={(e) => setLocalHeadline(e.target.value)}
         autoFocus
-        className="block w-full rounded-md border border-blue-400 px-2 py-1 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+        className="block w-full rounded-md border border-slate-400 px-2 py-1 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
       />
       {state.error && (
-        <p className="text-xs text-red-700">{state.error}</p>
+        <p className="text-xs text-slate-700">{state.error}</p>
       )}
       <div className="flex items-center gap-2">
         <SubmitButton />
@@ -560,7 +560,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded bg-gradient-to-br from-blue-800 to-blue-950 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:shadow disabled:opacity-60"
+      className="rounded bg-gradient-to-br from-slate-800 to-slate-950 px-2 py-0.5 text-[11px] font-semibold text-white shadow-sm hover:shadow disabled:opacity-60"
     >
       {pending ? "Speichere…" : "Speichern"}
     </button>
@@ -588,9 +588,9 @@ function VariantDots({
         const hasImage = imageSet.has(i);
         const hasRender = renderSet.has(i);
         const cls = hasRender
-          ? "bg-blue-800 ring-2 ring-blue-200"
+          ? "bg-slate-800 ring-2 ring-slate-200"
           : hasImage
-            ? "bg-emerald-500"
+            ? "bg-slate-500"
             : "bg-slate-200";
         const title = hasRender
           ? `Variante ${i + 1}: Render vorhanden`
@@ -622,9 +622,9 @@ function ProjectTag({
     <Link
       href={`/dashboard/projects/${projectId}`}
       onClick={(e) => e.stopPropagation()}
-      className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800 ring-1 ring-blue-200 hover:bg-blue-100 hover:ring-blue-300"
+      className="rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--foreground)] hover:bg-[var(--color-line)]"
     >
-      📁 {projectName}
+      {projectName}
     </Link>
   );
 }
@@ -634,15 +634,15 @@ function FormatPills({ formats }: { formats: string[] }) {
   const map: Record<string, { label: string; cls: string }> = {
     staticSquare: {
       label: "Static",
-      cls: "bg-amber-50 text-amber-800 ring-1 ring-amber-200",
+      cls: "bg-slate-50 text-slate-800 ring-1 ring-slate-200",
     },
     animatedSquare: {
       label: "Animated",
-      cls: "bg-violet-50 text-violet-800 ring-1 ring-violet-200",
+      cls: "bg-slate-50 text-slate-800 ring-1 ring-slate-200",
     },
     reelVertical: {
       label: "Reel",
-      cls: "bg-sky-50 text-sky-800 ring-1 ring-sky-200",
+      cls: "bg-slate-50 text-slate-800 ring-1 ring-slate-200",
     },
   };
   return (

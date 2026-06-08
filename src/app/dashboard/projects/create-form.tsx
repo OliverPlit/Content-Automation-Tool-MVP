@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 
+import { Icon } from "@/components/icon";
 import {
   type ProjectActionState,
   createProject,
@@ -30,9 +31,9 @@ export function CreateProjectForm() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-800 hover:shadow"
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--color-line)] bg-white px-4 py-3 text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--color-surface)]"
       >
-        <span className="text-lg">＋</span>
+        <Icon name="plus" className="size-4" />
         Neues Projekt anlegen
       </button>
     );
@@ -42,12 +43,14 @@ export function CreateProjectForm() {
     <form
       ref={formRef}
       action={formAction}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-blue-900/5"
+      className="rounded-xl border border-[var(--color-line)] bg-white p-5"
     >
-      <p className="text-sm font-semibold text-slate-900">Neues Projekt</p>
+      <p className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
+        Neues Projekt
+      </p>
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+          <label className="block text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
             Name *
           </label>
           <input
@@ -56,12 +59,12 @@ export function CreateProjectForm() {
             required
             maxLength={120}
             placeholder="z.B. Sommer-Kampagne 2026"
-            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="mt-1 block w-full rounded-lg border border-[var(--color-line)] px-3 py-2 text-[13px] focus:border-[var(--foreground)] focus:outline-none"
             autoFocus
           />
         </div>
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wide text-slate-500">
+          <label className="block text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
             Beschreibung
           </label>
           <input
@@ -69,19 +72,19 @@ export function CreateProjectForm() {
             type="text"
             maxLength={500}
             placeholder="optional"
-            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="mt-1 block w-full rounded-lg border border-[var(--color-line)] px-3 py-2 text-[13px] focus:border-[var(--foreground)] focus:outline-none"
           />
         </div>
       </div>
 
       {state.error && (
-        <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+        <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-[12px] text-slate-700">
           {state.error}
         </p>
       )}
       {state.ok && state.message && (
-        <p className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-          ✓ {state.message}
+        <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-[12px] text-slate-700">
+          <Icon name="check" className="size-3.5" /> {state.message}
         </p>
       )}
 
@@ -89,14 +92,14 @@ export function CreateProjectForm() {
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          className="rounded-full border border-[var(--color-line)] bg-white px-3.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--color-surface)]"
         >
           Abbrechen
         </button>
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-900/30 transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60 disabled:hover:translate-y-0"
+          className="rounded-full bg-[var(--foreground)] px-4 py-1.5 text-[12px] font-medium text-white hover:opacity-90 disabled:opacity-50"
         >
           {pending ? "Erstelle…" : "Projekt erstellen"}
         </button>

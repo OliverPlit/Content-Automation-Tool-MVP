@@ -44,8 +44,8 @@ export function ScrapeProductForm({
   }
 
   return (
-    <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50/50 p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-900">
+    <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-900">
         🔗 Aus Produkt-URL laden (optional)
       </h3>
       <div className="mt-2 flex gap-2">
@@ -60,28 +60,28 @@ export function ScrapeProductForm({
           type="button"
           onClick={run}
           disabled={busy || !url}
-          className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+          className="rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
         >
           {busy ? "⏳ Scraping…" : "Laden"}
         </button>
       </div>
       {error && (
-        <p className="mt-2 rounded-md bg-red-50 px-2 py-1 text-xs text-red-700">
+        <p className="mt-2 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-700">
           {error}
         </p>
       )}
       {result && (
         <div className="mt-3 space-y-2 text-xs">
           <p>
-            <strong className="text-blue-900">Name:</strong> {result.name}
+            <strong className="text-slate-900">Name:</strong> {result.name}
           </p>
           <p>
-            <strong className="text-blue-900">Key Message:</strong>{" "}
+            <strong className="text-slate-900">Key Message:</strong>{" "}
             {result.keyMessage}
           </p>
           {result.audience && (
             <p>
-              <strong className="text-blue-900">Audience:</strong>{" "}
+              <strong className="text-slate-900">Audience:</strong>{" "}
               {result.audience}
             </p>
           )}
@@ -101,7 +101,7 @@ export function ScrapeProductForm({
           <button
             type="button"
             onClick={() => onApply(result)}
-            className="mt-1 rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
+            className="mt-1 rounded-md bg-slate-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700"
           >
             ✓ Werte ins Form übernehmen
           </button>

@@ -35,7 +35,7 @@ export function BulkForm({
 
   if (imports.length === 0) {
     return (
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-900">
         <p className="font-semibold">Kein Produktkatalog importiert.</p>
         <p className="mt-1 text-xs">
           Lade oben im Generate-Bereich erst eine Produkt-CSV hoch (Meta Catalog
@@ -43,7 +43,7 @@ export function BulkForm({
         </p>
         <Link
           href="/dashboard/generate"
-          className="mt-3 inline-block rounded-md bg-amber-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-900"
+          className="mt-3 inline-block rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900"
         >
           → Zur Generate-Seite
         </Link>
@@ -62,7 +62,7 @@ export function BulkForm({
           name="importId"
           value={selectedImport}
           onChange={(e) => setSelectedImport(e.target.value)}
-          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
         >
           {imports.map((imp) => (
             <option key={imp.id} value={imp.id}>
@@ -104,7 +104,7 @@ export function BulkForm({
           name="persona"
           required
           defaultValue="franz_landwirt"
-          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
         >
           {PERSONAS.filter((p) => p.value !== "custom").map((p) => (
             <option key={p.value} value={p.value}>
@@ -121,7 +121,7 @@ export function BulkForm({
           name="platform"
           required
           defaultValue="meta_feed"
-          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
         >
           {PLATFORMS.map((p) => (
             <option key={p.value} value={p.value}>
@@ -139,7 +139,7 @@ export function BulkForm({
         <select
           name="projectId"
           defaultValue=""
-          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+          className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
         >
           <option value="">— Kein Projekt —</option>
           {projects.map((p) => (
@@ -162,7 +162,7 @@ export function BulkForm({
             min="1"
             max="5"
             defaultValue="2"
-            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
           />
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -175,25 +175,25 @@ export function BulkForm({
             min="1"
             max="50"
             defaultValue="10"
-            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
           />
         </div>
       </div>
 
       {/* Status */}
       {state.error && (
-        <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
           {state.error}
         </div>
       )}
       {state.ok && state.startedCount && state.startedCount > 0 && (
-        <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <div className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-800">
           ✓ {state.startedCount} Creative{state.startedCount === 1 ? "" : "s"} angelegt
           {state.failedCount ? ` · ${state.failedCount} fehlgeschlagen` : ""}.
           {state.projectId && (
             <Link
               href={`/dashboard/projects/${state.projectId}`}
-              className="ml-2 underline hover:text-emerald-950"
+              className="ml-2 underline hover:text-slate-950"
             >
               → Zum Projekt
             </Link>
@@ -201,7 +201,7 @@ export function BulkForm({
           {!state.projectId && (
             <Link
               href="/dashboard/library"
-              className="ml-2 underline hover:text-emerald-950"
+              className="ml-2 underline hover:text-slate-950"
             >
               → In der Library ansehen
             </Link>
@@ -209,7 +209,7 @@ export function BulkForm({
         </div>
       )}
       {state.errors && state.errors.length > 0 && (
-        <details className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <details className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-900">
           <summary className="cursor-pointer font-semibold">
             Details zu Fehlern ({state.errors.length})
           </summary>
@@ -224,7 +224,7 @@ export function BulkForm({
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-900/40 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+        className="w-full rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-slate-900/40 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
       >
         {pending
           ? "⏳ Generiere parallel… (kann 1-3 min dauern)"

@@ -34,7 +34,7 @@ export function ImageAlternativesBlock({
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-blue-900">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-900">
           Bild-Alternativen ({alternatives.length})
         </h4>
         <form action={regenAction} className="flex items-center gap-2">
@@ -55,12 +55,12 @@ export function ImageAlternativesBlock({
       </div>
 
       {regenState.error && (
-        <p className="mb-2 rounded-md bg-red-50 px-2 py-1 text-xs text-red-700">
+        <p className="mb-2 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-700">
           {regenState.error}
         </p>
       )}
       {setState.error && (
-        <p className="mb-2 rounded-md bg-red-50 px-2 py-1 text-xs text-red-700">
+        <p className="mb-2 rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-700">
           {setState.error}
         </p>
       )}
@@ -95,7 +95,7 @@ export function ImageAlternativesBlock({
                   className="aspect-square w-full object-cover"
                 />
                 {alt.isActive && (
-                  <span className="absolute left-1 top-1 rounded-full bg-blue-700 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+                  <span className="absolute left-1 top-1 rounded-full bg-slate-700 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
                     ✓ Aktiv
                   </span>
                 )}
@@ -114,7 +114,7 @@ function RegenBtn() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-md bg-blue-700 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
+      className="rounded-md bg-slate-700 px-2 py-1 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
     >
       {pending ? "⏳ …" : "🔄 Generieren"}
     </button>

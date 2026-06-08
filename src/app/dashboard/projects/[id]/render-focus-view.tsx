@@ -84,7 +84,7 @@ export function RenderFocusView({
           : "aspect-square";
 
   return (
-    <section className="sticky top-0 z-20 -mx-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg shadow-blue-900/5 backdrop-blur-md">
+    <section className="sticky top-0 z-20 -mx-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg shadow-slate-900/5 backdrop-blur-md">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
           Fokus · ← → Format · ↑ ↓ Variante · 1–7 Status
@@ -205,8 +205,8 @@ export function RenderFocusView({
                 className={
                   "rounded-md px-2 py-1 text-[10px] font-semibold transition " +
                   (isCurrent
-                    ? "bg-blue-800 text-white"
-                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-blue-50 hover:text-blue-800")
+                    ? "bg-slate-800 text-white"
+                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-800")
                 }
                 title={`Status → ${meta.label} (Taste ${idx + 1})`}
               >
@@ -238,7 +238,7 @@ export function RenderFocusView({
             name="scheduledAt"
             data-focus-key="scheduledAt"
             defaultValue={scheduledDefault}
-            className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
           />
         </label>
         <label className="block">
@@ -249,7 +249,7 @@ export function RenderFocusView({
             name="targetPlatform"
             data-focus-key="targetPlatform"
             defaultValue={focused.targetPlatform ?? ""}
-            className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
           >
             <option value="">— wählen —</option>
             {TARGET_PLATFORMS.map((p) => (
@@ -262,7 +262,7 @@ export function RenderFocusView({
         <button
           type="submit"
           disabled={planPending}
-          className="self-end rounded-md bg-gradient-to-br from-blue-800 to-blue-950 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow disabled:cursor-not-allowed disabled:opacity-60"
+          className="self-end rounded-md bg-gradient-to-br from-slate-800 to-slate-950 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow disabled:cursor-not-allowed disabled:opacity-60"
         >
           {planPending ? "…" : "Plan speichern"}
         </button>
@@ -275,16 +275,16 @@ export function RenderFocusView({
             rows={1}
             defaultValue={focused.notes ?? ""}
             placeholder="z. B. „A/B-Test gegen V2, 100 € Budget"
-            className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
           />
         </label>
         {planState.error && (
-          <p className="col-span-3 rounded bg-red-50 px-2 py-1 text-[10px] text-red-700">
+          <p className="col-span-3 rounded bg-slate-50 px-2 py-1 text-[10px] text-slate-700">
             {planState.error}
           </p>
         )}
         {planState.ok && planState.renderId === focused.id && (
-          <p className="col-span-3 rounded bg-emerald-50 px-2 py-1 text-[10px] text-emerald-800">
+          <p className="col-span-3 rounded bg-slate-50 px-2 py-1 text-[10px] text-slate-800">
             ✓ Gespeichert
           </p>
         )}
@@ -319,7 +319,7 @@ function NeighborTile({
     <button
       type="button"
       onClick={() => onClick(render)}
-      className="flex flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-2 text-center text-[10px] text-slate-600 hover:border-blue-400 hover:bg-blue-50"
+      className="flex flex-col items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-2 text-center text-[10px] text-slate-600 hover:border-slate-400 hover:bg-slate-50"
       title={`${label} (Pfeiltaste ${direction})`}
     >
       <span className="text-xs">{direction}</span>
@@ -370,7 +370,7 @@ function VariantStrip({
               type="button"
               onClick={() => onClick(r)}
               title={`V${r.variantIndex + 1} · ${r.templateLabel}`}
-              className="h-8 w-8 overflow-hidden rounded border border-slate-200 bg-white hover:border-blue-400"
+              className="h-8 w-8 overflow-hidden rounded border border-slate-200 bg-white hover:border-slate-400"
             >
               {r.outputUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -404,15 +404,15 @@ function statusBadgeClasses(color: string): string {
     case "slate":
       return "bg-slate-700/90 text-white";
     case "amber":
-      return "bg-amber-600 text-white";
+      return "bg-slate-600 text-white";
     case "blue":
-      return "bg-blue-700 text-white";
+      return "bg-slate-700 text-white";
     case "purple":
-      return "bg-purple-700 text-white";
+      return "bg-slate-700 text-white";
     case "emerald":
-      return "bg-emerald-600 text-white";
+      return "bg-slate-600 text-white";
     case "orange":
-      return "bg-orange-600 text-white";
+      return "bg-slate-600 text-white";
     case "stone":
       return "bg-stone-600 text-white";
     default:

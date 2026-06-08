@@ -1,0 +1,195 @@
+{
+  "output_format": "mp4",
+  "width": 1080,
+  "height": 1080,
+  "frame_rate": 30,
+  "duration": 5,
+  "fill_color": "#0f172a",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "image",
+      "track": 1,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "50%",
+      "width": [
+        { "time": 0, "value": "108%" },
+        { "time": 5, "value": "120%" }
+      ],
+      "height": [
+        { "time": 0, "value": "108%" },
+        { "time": 5, "value": "120%" }
+      ],
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fit": "cover",
+      "source": "https://creatomate.com/files/assets/b5dee2e5-9e1a-4d62-9c2c-6e1a4e3f0e6e"
+    },
+    {
+      "name": "Scrim",
+      "type": "shape",
+      "track": 2,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "50%",
+      "width": "100%",
+      "height": "100%",
+      "fill_color": "rgba(15,23,42,0.32)",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z"
+    },
+    {
+      "name": "Scrim-Bottom",
+      "type": "shape",
+      "track": 3,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "82%",
+      "width": "100%",
+      "height": "40%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fill_color": "rgba(15,23,42,0.6)",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z"
+    },
+    {
+      "name": "Accent-Color",
+      "type": "shape",
+      "track": 4,
+      "time": 0,
+      "duration": null,
+      "x": "8%",
+      "y": "12%",
+      "width": "14%",
+      "height": "1%",
+      "x_anchor": "0%",
+      "y_anchor": "50%",
+      "fill_color": "#FFD400",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z",
+      "animations": [
+        { "time": 0.2, "duration": 0.5, "easing": "quadratic-out", "type": "wipe", "x_anchor": "0%" }
+      ]
+    },
+    {
+      "name": "Logo",
+      "type": "text",
+      "track": 5,
+      "time": 0,
+      "duration": null,
+      "x": "8%",
+      "y": "8%",
+      "width": "60%",
+      "height": "7%",
+      "x_anchor": "0%",
+      "y_anchor": "50%",
+      "text": "WODOIL",
+      "font_family": "Oswald",
+      "font_weight": "700",
+      "font_size": "5 vmin",
+      "letter_spacing": "8%",
+      "fill_color": "#ffffff",
+      "text_align": "left",
+      "animations": [
+        { "time": 0, "duration": 0.5, "easing": "linear", "type": "fade" }
+      ]
+    },
+    {
+      "name": "Headline",
+      "type": "text",
+      "track": 7,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "78%",
+      "width": "86%",
+      "height": "18%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "GROSSE MARKEN.\nKLEINE PREISE.",
+      "font_family": "Oswald",
+      "font_weight": "700",
+      "font_size_minimum": 48,
+      "font_size_maximum": 120,
+      "fill_color": "#ffffff",
+      "text_wrap": true,
+      "text_align": "center",
+      "line_height": "98%",
+      "letter_spacing": "-1%",
+      "shadow_color": "rgba(0,0,0,0.45)",
+      "shadow_blur": 20,
+      "shadow_y": 3,
+      "animations": [
+        { "time": 0.3, "duration": 0.8, "easing": "quadratic-out", "type": "text-slide", "scope": "split-clip", "split": "word", "direction": "up" }
+      ]
+    },
+    {
+      "name": "Subline",
+      "type": "text",
+      "track": 8,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "91%",
+      "width": "82%",
+      "height": "8%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "Schmierstoffe seit 1946 · wodoil.at",
+      "font_family": "Inter",
+      "font_weight": "500",
+      "font_size_minimum": 24,
+      "font_size_maximum": 46,
+      "fill_color": "#FFD400",
+      "text_align": "center",
+      "text_wrap": true,
+      "animations": [
+        { "time": 1.2, "duration": 0.6, "easing": "quadratic-out", "type": "fade" }
+      ]
+    },
+    {
+      "name": "CTA-Box",
+      "type": "shape",
+      "track": 9,
+      "time": 0,
+      "duration": null,
+      "x": "82%",
+      "y": "12%",
+      "width": "30%",
+      "height": "7%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fill_color": "#FFD400",
+      "border_radius": "999 vmin",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z",
+      "animations": [
+        { "time": 3.6, "duration": 0.5, "easing": "quadratic-out", "type": "scale", "fade": true, "scope": "element", "start_scale": "80%", "end_scale": "100%" }
+      ]
+    },
+    {
+      "name": "CTA",
+      "type": "text",
+      "track": 10,
+      "time": 0,
+      "duration": null,
+      "x": "82%",
+      "y": "12%",
+      "width": "28%",
+      "height": "7%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "Jetzt shoppen",
+      "font_family": "Inter",
+      "font_weight": "700",
+      "font_size_minimum": 20,
+      "font_size_maximum": 38,
+      "fill_color": "#0f172a",
+      "text_align": "center",
+      "animations": [
+        { "time": 3.75, "duration": 0.4, "easing": "linear", "type": "fade" }
+      ]
+    }
+  ]
+}

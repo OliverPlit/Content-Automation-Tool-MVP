@@ -263,7 +263,13 @@ function VariantAccordion({
       {/* Aktive Variante voll sichtbar */}
       {currentVariant && (
         <div className="space-y-4">
+          {/* key={safeActive}: erzwingt Remount beim Tab-Wechsel. VariantEditCard
+              nutzt unkontrollierte defaultValue-Inputs — ohne Remount würde React
+              die Input-Werte NICHT auf die neue Variante zurücksetzen, sodass
+              Headline/Subline/Body/CTA der ersten Variante in allen Tabs
+              „kleben" bleiben (sah aus, als hätten alle dieselbe Headline). */}
           <VariantEditCard
+            key={safeActive}
             creativeId={creativeId}
             index={safeActive}
             body={currentVariant.body}

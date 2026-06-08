@@ -1,0 +1,154 @@
+{
+  "output_format": "mp4",
+  "width": 1080,
+  "height": 1080,
+  "frame_rate": 30,
+  "duration": 5,
+  "fill_color": "#0f172a",
+  "elements": [
+    {
+      "name": "Background",
+      "type": "image",
+      "track": 1,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "50%",
+      "width": [
+        { "time": 0, "value": "110%" },
+        { "time": 5, "value": "122%" }
+      ],
+      "height": [
+        { "time": 0, "value": "110%" },
+        { "time": 5, "value": "122%" }
+      ],
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fit": "cover",
+      "source": "https://creatomate.com/files/assets/b5dee2e5-9e1a-4d62-9c2c-6e1a4e3f0e6e"
+    },
+    {
+      "name": "Scrim",
+      "type": "shape",
+      "track": 2,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "50%",
+      "width": "100%",
+      "height": "100%",
+      "fill_color": "rgba(15,23,42,0.3)",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z"
+    },
+    {
+      "name": "Primary-Color",
+      "type": "shape",
+      "track": 3,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "13%",
+      "width": "100%",
+      "height": "20%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fill_color": "#FFD400",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z",
+      "animations": [
+        { "time": 0, "duration": 0.5, "easing": "quadratic-out", "type": "slide", "direction": "down", "distance": "100%" }
+      ]
+    },
+    {
+      "name": "Headline",
+      "type": "text",
+      "track": 4,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "13%",
+      "width": "90%",
+      "height": "16%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "GROSSE MARKEN. KLEINE PREISE.",
+      "font_family": "Oswald",
+      "font_weight": "700",
+      "font_size_minimum": 40,
+      "font_size_maximum": 96,
+      "fill_color": "#0f172a",
+      "text_wrap": true,
+      "text_align": "center",
+      "line_height": "94%",
+      "letter_spacing": "-1%",
+      "animations": [
+        { "time": 0.4, "duration": 0.6, "easing": "quadratic-out", "type": "text-slide", "scope": "split-clip", "split": "word", "direction": "up" }
+      ]
+    },
+    {
+      "name": "Subline",
+      "type": "text",
+      "track": 6,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "84%",
+      "width": "82%",
+      "height": "7%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "Schmierstoffe seit 1946 · wodoil.at",
+      "font_family": "Inter",
+      "font_weight": "500",
+      "font_size_minimum": 24,
+      "font_size_maximum": 46,
+      "fill_color": "#ffffff",
+      "text_align": "center",
+      "text_wrap": true,
+      "animations": [
+        { "time": 1.2, "duration": 0.5, "easing": "linear", "type": "fade" }
+      ]
+    },
+    {
+      "name": "CTA-Box",
+      "type": "shape",
+      "track": 7,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "93%",
+      "width": "56%",
+      "height": "7.5%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "fill_color": "#FFD400",
+      "border_radius": "999 vmin",
+      "path": "M 0 0 L 100 0 L 100 100 L 0 100 Z",
+      "animations": [
+        { "time": 3.4, "duration": 0.5, "easing": "quadratic-out", "type": "scale", "fade": true, "scope": "element", "start_scale": "82%", "end_scale": "100%" }
+      ]
+    },
+    {
+      "name": "CTA",
+      "type": "text",
+      "track": 8,
+      "time": 0,
+      "duration": null,
+      "x": "50%",
+      "y": "93%",
+      "width": "52%",
+      "height": "7.5%",
+      "x_anchor": "50%",
+      "y_anchor": "50%",
+      "text": "Jetzt shoppen",
+      "font_family": "Inter",
+      "font_weight": "700",
+      "font_size_minimum": 22,
+      "font_size_maximum": 44,
+      "fill_color": "#0f172a",
+      "text_align": "center",
+      "animations": [
+        { "time": 3.55, "duration": 0.4, "easing": "linear", "type": "fade" }
+      ]
+    }
+  ]
+}

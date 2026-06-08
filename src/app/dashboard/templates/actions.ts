@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
-import { promptTemplateDataSchema } from "../generate/schema";
+import {
+  promptTemplateDataSchema,
+  type PromptTemplateData,
+} from "../generate/schema";
 
 export type TemplateActionState = {
   ok: boolean;
@@ -84,9 +87,80 @@ export async function createTemplate(
     .single();
   if (error) return { ok: false, error: `DB-Fehler: ${error.message}` };
 
+  revalidatePath("/dashboard/settings/templates");
   revalidatePath("/dashboard/templates");
   revalidatePath("/dashboard");
   return { ok: true, message: "Vorlage angelegt.", createdId: row.id };
+}
+
+// ---------------------------------------------------------------------------
+// saveGenerateTemplate — speichert den AKTUELLEN Generate-Form-Zustand als
+// Vorlage. Wird direkt (nicht via useActionState) aus dem Generate-Form
+// aufgerufen, damit der „Als Vorlage speichern"-Klick NICHT den Generate-
+// Submit auslöst. Erwartet:
+//   - name:         Anzeigename der Vorlage
+//   - templateData: JSON-String der PromptTemplateData (im Client gebaut)
+// ---------------------------------------------------------------------------
+export async function saveGenerateTemplate(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string; id?: string; name?: string }> {
+  const name = String(formData.get("name") ?? "").trim();
+  if (name.length < 2) {
+    return { ok: false, error: "Name muss mind. 2 Zeichen haben." };
+  }
+  if (name.length > 120) {
+    return { ok: false, error: "Name zu lang (max. 120 Zeichen)." };
+  }
+
+  // templateData defensiv parsen — kaputtes JSON ⇒ leere Vorlage statt Crash.
+  let data: PromptTemplateData = {};
+  const raw = formData.get("templateData");
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    try {
+      const parsed = promptTemplateDataSchema.safeParse(JSON.parse(raw));
+      if (parsed.success) data = parsed.data;
+    } catch {
+      // ignorieren — Vorlage wird trotzdem mit Name (leeres Daten-Set) angelegt
+    }
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Nicht eingeloggt." };
+
+  const { data: row, error } = await supabase
+    .from("templates")
+    .insert({
+      user_id: user.id,
+      name,
+      description: null,
+      prompt_template: "", // Legacy-Feld, bleibt leer
+      template_data: data,
+    })
+    .select("id, name")
+    .single();
+  if (error) {
+    const msg = error.message.toLowerCase();
+    if (
+      msg.includes("template_data") &&
+      (msg.includes("does not exist") || msg.includes("schema cache"))
+    ) {
+      return {
+        ok: false,
+        error:
+          "Migration fehlt — bitte im Supabase SQL Editor ausführen: " +
+          "alter table public.templates add column if not exists template_data jsonb;",
+      };
+    }
+    return { ok: false, error: `DB-Fehler: ${error.message}` };
+  }
+
+  revalidatePath("/dashboard/settings/templates");
+  revalidatePath("/dashboard/templates");
+  revalidatePath("/dashboard");
+  return { ok: true, id: row.id, name: row.name };
 }
 
 // ---------------------------------------------------------------------------
@@ -139,8 +213,39 @@ export async function updateTemplate(
     return { ok: false, error: `DB-Fehler: ${error.message}` };
   }
 
+  revalidatePath("/dashboard/settings/templates");
   revalidatePath("/dashboard/templates");
   return { ok: true, message: "Vorlage aktualisiert." };
+}
+
+// ---------------------------------------------------------------------------
+// deleteAllTemplates — löscht ALLE eigenen Vorlagen des aktuellen Users.
+// RLS erlaubt nur das Löschen eigener Zeilen (user_id = auth.uid()); System-
+// Vorlagen (user_id = null) bleiben unberührt. Wird direkt aus dem Client
+// aufgerufen (nicht via useActionState) und liefert eine Zähl-Rückmeldung.
+// ---------------------------------------------------------------------------
+export async function deleteAllTemplates(): Promise<{
+  ok: boolean;
+  error?: string;
+  deleted?: number;
+}> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Nicht eingeloggt." };
+
+  const { data, error } = await supabase
+    .from("templates")
+    .delete()
+    .eq("user_id", user.id)
+    .select("id");
+  if (error) return { ok: false, error: `DB-Fehler: ${error.message}` };
+
+  revalidatePath("/dashboard/settings/templates");
+  revalidatePath("/dashboard/templates");
+  revalidatePath("/dashboard");
+  return { ok: true, deleted: data?.length ?? 0 };
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +260,8 @@ export async function deleteTemplate(formData: FormData): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) return;
   await supabase.from("templates").delete().eq("id", id);
+  revalidatePath("/dashboard/settings/templates");
   revalidatePath("/dashboard/templates");
   revalidatePath("/dashboard");
-  redirect("/dashboard/templates");
+  redirect("/dashboard/settings/templates");
 }

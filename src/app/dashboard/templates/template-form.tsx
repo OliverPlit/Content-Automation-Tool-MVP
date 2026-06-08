@@ -63,7 +63,7 @@ export function TemplateForm({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-800 hover:shadow"
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-50 hover:text-slate-800 hover:shadow"
       >
         <span className="text-lg">＋</span>
         Neue Vorlage anlegen
@@ -75,7 +75,7 @@ export function TemplateForm({
     <form
       ref={formRef}
       action={formAction}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-blue-900/5"
+      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-900/5"
     >
       {isEdit && template && (
         <input type="hidden" name="id" value={template.id} />
@@ -214,12 +214,12 @@ export function TemplateForm({
       </div>
 
       {state.error && (
-        <pre className="mt-4 overflow-x-auto whitespace-pre-wrap rounded-md bg-red-50 px-3 py-2 font-sans text-xs text-red-700">
+        <pre className="mt-4 overflow-x-auto whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 font-sans text-xs text-slate-700">
           {state.error}
         </pre>
       )}
       {state.ok && state.message && (
-        <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+        <p className="mt-4 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
           ✓ {state.message}
         </p>
       )}
@@ -246,7 +246,7 @@ export function TemplateForm({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-900/30 transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60 disabled:hover:translate-y-0"
+          className="rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-slate-900/30 transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60 disabled:hover:translate-y-0"
         >
           {pending
             ? "Speichere…"
@@ -260,6 +260,6 @@ export function TemplateForm({
 }
 
 const inputCls =
-  "mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700";
+  "mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700";
 const labelCls =
   "block text-[10px] font-semibold uppercase tracking-wide text-slate-500";

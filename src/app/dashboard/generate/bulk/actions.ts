@@ -19,6 +19,7 @@ import {
 } from "../schema";
 import { generateAdCopy } from "../actions";
 import type { ProductRow } from "@/lib/meta-import/insights";
+import { persistCreativeFeatures } from "@/lib/learning/features";
 
 export type BulkState = {
   ok: boolean;
@@ -182,6 +183,27 @@ export async function startBulkGenerate(
             { onConflict: "creative_id,variant_index" },
           );
         }
+        // Self-Learning Phase 0: Achsen-Features je Variante persistieren.
+        await persistCreativeFeatures(
+          supabase,
+          user.id,
+          creativeRow.id,
+          {
+            awareness: Number(personaMeta.awareness),
+            platform,
+            product: product.title,
+            audienceSegment: persona,
+            audienceText: personaMeta.audience,
+          },
+          result.variants.map((va) => ({
+            index: va.index - 1,
+            hook: va.hook ?? null,
+            framework: va.framework ?? null,
+            lever: va.lever ?? null,
+            imageStyle: va.imageStyle ?? null,
+            headline: va.headline ?? null,
+          })),
+        );
         startedCount += 1;
       } else {
         failedCount += 1;

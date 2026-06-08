@@ -4,6 +4,8 @@ import { z } from "zod";
 import { openai } from "@/lib/ai/openai-client";
 import { createClient } from "@/lib/supabase/server";
 import { MACHINES, ANGLES, TONES } from "@/app/dashboard/generate/schema";
+import { extractBrandColors, normalizeHex, type BrandColors } from "@/lib/scrape/brand-colors";
+import { detectLogoFromHtml, extractThemeColor } from "@/lib/scrape/logo-detect";
 
 const MAX_CHARS = 3000;
 const TIMEOUT_MS = 5000;
@@ -348,6 +350,8 @@ export async function POST(req: Request) {
     const title = extractTitle(html);
     const description = extractDescription(html);
     const rawImageUrl = extractImageUrl(html, parsed.toString());
+    const logoUrl = detectLogoFromHtml(html, parsed.toString());
+    const themeColor = normalizeHex(extractThemeColor(html));
 
     if (!text) {
       return NextResponse.json(
@@ -356,10 +360,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // Bild-Mirror UND LLM-Inference PARALLEL — beide brauchen ein paar Sekunden.
-    const [mirror, inferred] = await Promise.all([
+    // Bild-Mirror, LLM-Inference UND Brand-Color-Extract PARALLEL.
+    // Logo-Pixel-Sampling läuft im Hintergrund; bei Timeout/Fehler null.
+    const [mirror, inferred, rawBrandColors] = await Promise.all([
       rawImageUrl ? mirrorCrawledImage(rawImageUrl) : Promise.resolve({ ok: false as const }),
       inferFormFields(text, title, description),
+      logoUrl ? extractBrandColors(logoUrl).catch(() => null) : Promise.resolve(null),
     ]);
 
     let imageUrl = rawImageUrl;
@@ -369,12 +375,28 @@ export async function POST(req: Request) {
       imageMirrored = true;
     }
 
+    // theme-color schlägt Logo-Sampling, weil es vom Brand-Designer
+    // bewusst gesetzt ist (z. B. <meta name="theme-color" content="#003B5C">).
+    const brandColors: BrandColors | null = rawBrandColors
+      ? {
+          primary: themeColor ?? rawBrandColors.primary,
+          accent: rawBrandColors.accent,
+          background: rawBrandColors.background,
+          text: rawBrandColors.text,
+        }
+      : themeColor
+        ? { primary: themeColor, accent: themeColor, background: "#FFFFFF", text: "#111111" }
+        : null;
+
     return NextResponse.json({
       text,
       title,
       description,
       imageUrl,
       imageMirrored,
+      // RF-Brand: Logo-URL + 4 extrahierte Brand-Farben
+      logoUrl,
+      brandColors,
       // LLM-Inferred Form-Felder — überschreiben die heuristischen Defaults
       product: inferred?.product ?? title,
       audience: inferred?.audience ?? description,

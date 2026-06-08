@@ -46,7 +46,7 @@ export function ProjectPicker({
   const currentFolder = folders.find((f) => f.id === currentFolderId) ?? null;
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-blue-900/5">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-slate-900/5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -57,7 +57,7 @@ export function ProjectPicker({
               href={`/dashboard/projects/${current.id}${
                 currentFolderId ? `?folder=${currentFolderId}` : ""
               }`}
-              className="mt-0.5 inline-flex items-center gap-1 text-sm font-semibold text-blue-800 hover:text-blue-950 hover:underline"
+              className="mt-0.5 inline-flex items-center gap-1 text-sm font-semibold text-slate-800 hover:text-slate-950 hover:underline"
             >
               📁 {current.name}
               {currentFolder && (
@@ -88,7 +88,7 @@ export function ProjectPicker({
               // Folder-Reset im Form-Submit landet.
               setTimeout(() => formRef.current?.requestSubmit(), 0);
             }}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
           >
             <option value="none">— Kein Projekt —</option>
             {projects.map((p) => (
@@ -106,7 +106,7 @@ export function ProjectPicker({
                 setFolderId(e.target.value);
                 setTimeout(() => formRef.current?.requestSubmit(), 0);
               }}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700"
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700"
             >
               <option value="none">— Kein Ordner —</option>
               {folders.map((f) => (
@@ -126,7 +126,7 @@ export function ProjectPicker({
           {projects.length === 0 && (
             <Link
               href="/dashboard/projects"
-              className="text-xs font-medium text-blue-700 hover:text-blue-900"
+              className="text-xs font-medium text-slate-700 hover:text-slate-900"
             >
               Erst Projekt anlegen →
             </Link>

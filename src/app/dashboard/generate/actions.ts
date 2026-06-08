@@ -49,10 +49,20 @@ import {
   type PersuasionLeverValue,
   type PlatformValue,
   type ProductFacts,
+  type PromptTemplateData,
   type SaveState,
 } from "./schema";
 import { buildVariantPlan, type VariantPlan } from "./variant-plan";
+import { seedArm, thompsonOrder } from "./variant-bandit";
 import { scoreCreative } from "@/lib/score/creative";
+import { persistCreativeFeatures } from "@/lib/learning/features";
+import {
+  getPerformancePriors,
+  hookBoostFromPriors,
+  type PerformancePriors,
+} from "@/lib/score/priors";
+import { predictCtr } from "@/lib/score/predict";
+import { getTopPerformers } from "@/lib/score/winners";
 
 const STORAGE_BUCKET = "creative-images";
 
@@ -420,6 +430,8 @@ async function generateOneVariant(args: {
   productFacts: ProductFacts | null;
   metaInsights?: MetaPromptInsights;
   embedMode: EmbedMode;
+  // Phase 3: Beta-Priors für die erwartete-CTR-Schätzung.
+  priors: PerformancePriors;
 }): Promise<GeneratedVariant> {
   const {
     supabase,
@@ -444,6 +456,7 @@ async function generateOneVariant(args: {
     urgency,
     productFacts,
     metaInsights,
+    priors,
     embedMode,
   } = args;
 
@@ -514,6 +527,21 @@ Du bist Variante ${variantNumber} von ${variantTotal}.`;
   }
 
   const finalCopy = bestCandidate!;
+
+  // Phase 3: erwartete CTR dieser Variante schätzen (Features × Priors ×
+  // Heuristik-Score). Steuert in der UI die Render-Priorisierung.
+  const prediction = predictCtr(
+    {
+      hook: plan.hook.value,
+      framework: plan.framework.value,
+      imageStyle,
+      awareness,
+      platform,
+      segment: persona ?? null,
+    },
+    priors,
+    Math.max(0, Math.min(1, bestScore / 100)),
+  );
 
   // 2) Bild — je nach Source. Bei AI + imageVariantCount > 1 werden mehrere
   //    Stile parallel generiert (Doc 4.6).
@@ -597,6 +625,11 @@ Du bist Variante ${variantNumber} von ${variantTotal}.`;
     hook: plan.hook.value,
     framework: plan.framework.value,
     lever: plan.lever,
+    // Aufgelöster Stil dieser Variante (args.imageStyle = styleRotation[i]).
+    imageStyle,
+    // Phase 3: erwartete CTR aus Features × Priors × Heuristik-Score.
+    predictedCtr: prediction.ctr,
+    predictedCtrConfidence: prediction.confidence,
   };
 }
 
@@ -777,11 +810,17 @@ export async function generateAdCopy(
   // Stufe-1-Lernschleife: User-Hook-Präferenzen aus Ratings einlesen.
   // Stufe-2-Lernschleife: Ads-Performance-CTR aus Meta-Imports.
   // Beide Quellen werden gemergt und an den Plan-Generator gegeben.
-  const [manualPrefs, metaInsights] = await Promise.all([
+  const [manualPrefs, metaInsights, perfPriors] = await Promise.all([
     getUserHookPreferences(user.id),
     getMetaPromptInsights(user.id),
+    // Phase 1: echte, gematchte CTR-Priors je Hook (aus creative_outcomes).
+    getPerformancePriors(supabase, user.id),
   ]);
-  const hookPreferences = mergeHookPreferences(manualPrefs, metaInsights.adsHookBoost);
+  const hookPreferences = mergeHookPreferences(
+    manualPrefs,
+    metaInsights.adsHookBoost,
+    hookBoostFromPriors(perfPriors),
+  );
   const plans = buildVariantPlan(
     variantCount,
     awareness as AwarenessValue,
@@ -789,6 +828,8 @@ export async function generateAdCopy(
     persuasionLevers,
     hookHint,
     hookPreferences,
+    // Phase 2: Thompson Sampling über Hook + Framework aus den Beta-Priors.
+    perfPriors,
   );
 
   const cleanedCustomUrl =
@@ -838,11 +879,19 @@ export async function generateAdCopy(
   const realStyles = IMAGE_STYLES.map((s) => s.value).filter(
     (v) => v !== "auto",
   ) as ImageStyleValue[];
+  // Phase 2: im "auto"-Modus den Bild-Stil ebenfalls per Thompson Sampling
+  // aus den Stil-Priors ziehen (statt fixer Rotation). Cold-Start ohne Daten
+  // → uniform = volle Exploration.
   const styleRotation: ImageStyleValue[] =
     imageStyle === "auto"
-      ? Array.from(
-          { length: plans.length },
-          (_, i) => realStyles[i % realStyles.length],
+      ? thompsonOrder(
+          realStyles.map((s) => ({
+            value: s,
+            ...seedArm(perfPriors.imageStyle.get(s), 0, {
+              baseline: perfPriors.baselineCtr,
+            }),
+          })),
+          plans.length,
         )
       : Array.from({ length: plans.length }, () => imageStyle as ImageStyleValue);
 
@@ -873,6 +922,7 @@ export async function generateAdCopy(
         productFacts,
         metaInsights,
         embedMode: embedMode as EmbedMode,
+        priors: perfPriors,
       }),
     ),
   );
@@ -1180,6 +1230,14 @@ const savePayloadSchema = z.object({
   // RF-Brand: optionaler Brand-Style aus dem Crawl
   brandColorsJson: z.string().optional().or(z.literal("")),
   logoUrl: z.string().optional().or(z.literal("")),
+  // Self-Learning Phase 0 — Achsen-Features (optional/Legacy).
+  hook: z.string().max(40).optional().or(z.literal("")),
+  framework: z.string().max(40).optional().or(z.literal("")),
+  lever: z.string().max(40).optional().or(z.literal("")),
+  imageStyle: z.string().max(40).optional().or(z.literal("")),
+  awareness: z.coerce.number().int().min(1).max(5).optional(),
+  platform: z.string().max(40).optional().or(z.literal("")),
+  audienceSegment: z.string().max(60).optional().or(z.literal("")),
 });
 
 export async function saveCreative(
@@ -1204,6 +1262,13 @@ export async function saveCreative(
     folderId: formData.get("folderId") ?? "",
     brandColorsJson: formData.get("brandColors") ?? "",
     logoUrl: formData.get("logoUrl") ?? "",
+    hook: formData.get("hook") ?? "",
+    framework: formData.get("framework") ?? "",
+    lever: formData.get("lever") ?? "",
+    imageStyle: formData.get("imageStyle") ?? "",
+    awareness: formData.get("awareness") || undefined,
+    platform: formData.get("platform") ?? "",
+    audienceSegment: formData.get("audienceSegment") ?? "",
   });
   if (!parsed.success) {
     return {
@@ -1238,6 +1303,13 @@ export async function saveCreative(
     folderId,
     brandColorsJson,
     logoUrl: logoUrlIn,
+    hook,
+    framework,
+    lever,
+    imageStyle,
+    awareness,
+    platform,
+    audienceSegment,
   } = parsed.data;
 
   // RF-Brand: Folder-Brand füllen, wenn noch leer
@@ -1330,6 +1402,31 @@ Variante: ${variantIndex}`;
     );
   }
 
+  // Self-Learning Phase 0: Features dieser (Einzel-)Variante an variant_index 0
+  // persistieren — identisch zur creative_images-Row oben.
+  await persistCreativeFeatures(
+    supabase,
+    user.id,
+    creativeRow.id,
+    {
+      awareness: awareness ?? null,
+      platform: platform || null,
+      product,
+      audienceSegment: audienceSegment || null,
+      audienceText: audience,
+    },
+    [
+      {
+        index: 0,
+        hook: hook || null,
+        framework: framework || null,
+        lever: lever || null,
+        imageStyle: imageStyle || null,
+        headline,
+      },
+    ],
+  );
+
   revalidatePath("/dashboard/library");
   return {
     ok: true,
@@ -1361,6 +1458,11 @@ const bundleVariantSchema = z.object({
   imagePrompt: z.string().max(800).optional().or(z.literal("")),
   previewImageUrl: z.string().url().optional().or(z.literal("")),
   productImageUrl: z.string().url().optional().or(z.literal("")),
+  // Self-Learning Phase 0 — Achsen-Features je Variante (optional/Legacy).
+  hook: z.string().max(40).optional().or(z.literal("")),
+  framework: z.string().max(40).optional().or(z.literal("")),
+  lever: z.string().max(40).optional().or(z.literal("")),
+  imageStyle: z.string().max(40).optional().or(z.literal("")),
 });
 
 const bundlePayloadSchema = z.object({
@@ -1376,6 +1478,11 @@ const bundlePayloadSchema = z.object({
   folderId: z.string().uuid().optional().or(z.literal("")),
   brandColorsJson: z.string().optional().or(z.literal("")),
   logoUrl: z.string().optional().or(z.literal("")),
+  // Self-Learning Phase 0 — run-weite Features.
+  awareness: z.coerce.number().int().min(1).max(5).optional(),
+  platform: z.string().max(40).optional().or(z.literal("")),
+  audienceSegment: z.string().max(60).optional().or(z.literal("")),
+  audienceText: z.string().max(300).optional().or(z.literal("")),
 });
 
 export async function saveAllVariants(
@@ -1406,6 +1513,10 @@ export async function saveAllVariants(
     folderId: formData.get("folderId") ?? "",
     brandColorsJson: formData.get("brandColors") ?? "",
     logoUrl: formData.get("logoUrl") ?? "",
+    awareness: formData.get("awareness") || undefined,
+    platform: formData.get("platform") ?? "",
+    audienceSegment: formData.get("audienceSegment") ?? "",
+    audienceText: formData.get("audience") ?? "",
   });
   if (!parsed.success) {
     return {
@@ -1435,6 +1546,10 @@ export async function saveAllVariants(
     folderId,
     brandColorsJson,
     logoUrl: logoUrlIn,
+    awareness,
+    platform,
+    audienceSegment,
+    audienceText,
   } = parsed.data;
 
   // RF-Brand: Folder-Brand mit den Crawl-Farben befüllen, falls Folder
@@ -1537,6 +1652,29 @@ ${variants.length} Varianten`;
       );
     }
   }
+
+  // Self-Learning Phase 0: Achsen-Features je Variante persistieren. Der
+  // variant_index (i) ist identisch zu dem der creative_images-Rows oben.
+  await persistCreativeFeatures(
+    supabase,
+    user.id,
+    creativeRow.id,
+    {
+      awareness: awareness ?? null,
+      platform: platform || null,
+      product,
+      audienceSegment: audienceSegment || null,
+      audienceText: audienceText || audience,
+    },
+    variants.map((v, i) => ({
+      index: i,
+      hook: v.hook || null,
+      framework: v.framework || null,
+      lever: v.lever || null,
+      imageStyle: v.imageStyle || null,
+      headline: v.headline && v.headline.length > 0 ? v.headline : headline,
+    })),
+  );
 
   revalidatePath("/dashboard/library");
   if (projectId) revalidatePath(`/dashboard/projects/${projectId}`);
@@ -1800,17 +1938,67 @@ export async function getMetaPromptInsights(
   return result;
 }
 
-// Kombiniert manuelles 👍/👎 (Stufe 1) mit Ads-CTR-Boost (Stufe 2).
-// Ads-Boost wiegt doppelt, weil echte Performance > Subjektive Bewertung.
+// Kombiniert manuelles 👍/👎 (Stufe 1) mit Ads-CTR-Boost (Stufe 2, aus
+// Headline-Klassifikation) und den gematchten Outcome-Priors (Phase 1, echte
+// CTR je Hook unserer Creatives). Gewichtung: gematchte Outcomes > aggregierter
+// Headline-Boost > subjektives Rating.
 // Kein export — "use server"-Files erlauben nur async Funktions-Exporte.
 function mergeHookPreferences(
   manual: Map<HookValue, number>,
   adsBoost: Map<HookValue, number>,
+  priorsBoost?: Map<HookValue, number>,
 ): Map<HookValue, number> {
   const merged = new Map<HookValue, number>(manual);
   for (const [hook, boost] of adsBoost) {
     const cur = merged.get(hook) ?? 0;
     merged.set(hook, cur + boost * 2);
   }
+  if (priorsBoost) {
+    for (const [hook, boost] of priorsBoost) {
+      const cur = merged.get(hook) ?? 0;
+      merged.set(hook, cur + boost * 3);
+    }
+  }
   return merged;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: Gewinner→Seed. Liefert die Top-Performer (P95/2×Median) als
+// vorausgefüllte Generate-Vorlagen. Hook + Stil + Framework werden vom
+// Gewinner übernommen, der Angle bleibt OFFEN → rotiert beim nächsten Lauf
+// (genetische Mutation: gleiches Gewinner-Muster, neuer Winkel).
+// ---------------------------------------------------------------------------
+export type WinnerSeed = {
+  id: string;
+  headline: string;
+  ctr: number;
+  impressions: number;
+  data: PromptTemplateData;
+};
+
+export async function getWinnerSeeds(): Promise<WinnerSeed[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { winners } = await getTopPerformers(supabase, user.id);
+  return winners.map((w) => ({
+    id: `${w.creativeId}:${w.variantIndex}`,
+    headline: w.headline,
+    ctr: w.ctr,
+    impressions: w.impressions,
+    data: {
+      product: w.product ?? "",
+      audience: w.audienceText ?? "",
+      hookHint: w.hook ?? "",
+      framework: w.framework ?? "",
+      imageStyle: w.imageStyle ?? "",
+      awareness: w.awareness ?? undefined,
+      persona: w.audienceSegment ?? "",
+      platform: w.platform ?? "",
+      // angle bewusst NICHT gesetzt → Mutation
+    },
+  }));
 }

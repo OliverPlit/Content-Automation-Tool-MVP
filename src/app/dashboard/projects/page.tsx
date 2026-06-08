@@ -1,6 +1,12 @@
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
+import { Icon } from "@/components/icon";
+import { TEMPLATE_META, type TemplateKind } from "@/lib/creatomate/templates";
+import {
+  TARGET_PLATFORMS,
+  type PostStatus,
+} from "./[id]/schedule-constants";
 import { CreateProjectForm } from "./create-form";
 
 type ProjectRow = {
@@ -10,163 +16,356 @@ type ProjectRow = {
   created_at: string;
 };
 
-export default async function ProjectsPage() {
+type ScheduledRender = {
+  id: string;
+  creativeId: string;
+  scheduledAt: string;
+  postStatus: PostStatus;
+  templateKind: TemplateKind;
+  targetPlatform: string | null;
+  outputUrl: string | null;
+  projectId: string | null;
+  creativeHeadline: string;
+};
+
+/**
+ * Plan-Page (was: /dashboard/projects).
+ * Hauptansicht: Kalender der nächsten 4 Wochen über ALLE Projekte.
+ * Sidebar: Projekt-Liste + Schnell-Aktionen.
+ */
+export default async function PlanPage() {
   const supabase = await createClient();
-  const { data: projects, error } = await supabase
+
+  // 1) Projekte für Sidebar
+  const { data: projectRows } = await supabase
     .from("projects")
-    .select("id, name, description, created_at")
+    .select("id, name")
     .order("created_at", { ascending: false });
+  const projects = (projectRows ?? []) as Pick<ProjectRow, "id" | "name">[];
 
-  const list = (projects ?? []) as ProjectRow[];
-  const ids = list.map((p) => p.id);
+  // 2) Geplante Renders (mit scheduled_at) — projektübergreifend
+  const { data: renderRows } = await supabase
+    .from("creative_renders")
+    .select(
+      "id, creative_id, scheduled_at, post_status, template_kind, target_platform, output_url, status",
+    )
+    .not("scheduled_at", "is", null)
+    .order("scheduled_at", { ascending: true });
 
-  // Counts pro Projekt + Thumbnails (jüngste 3 Creatives je Projekt)
-  const countByProject = new Map<string, number>();
-  const thumbsByProject = new Map<string, string[]>();
-
-  if (ids.length > 0) {
+  // 3) Creative-Project-Mapping für die geplanten Items
+  const creativeIds = Array.from(
+    new Set((renderRows ?? []).map((r) => r.creative_id as string)),
+  );
+  const headlineByCreative = new Map<string, string>();
+  const projectByCreative = new Map<string, string | null>();
+  if (creativeIds.length > 0) {
     const { data: creatives } = await supabase
       .from("creatives")
-      .select("id, project_id, created_at")
-      .in("project_id", ids)
-      .order("created_at", { ascending: false });
-
+      .select("id, output, project_id")
+      .in("id", creativeIds);
     (creatives ?? []).forEach((c) => {
-      const pid = c.project_id as string;
-      countByProject.set(pid, (countByProject.get(pid) ?? 0) + 1);
+      projectByCreative.set(
+        c.id as string,
+        (c.project_id as string | null) ?? null,
+      );
+      try {
+        const parsed = JSON.parse(c.output ?? "");
+        if (parsed?.headline) {
+          headlineByCreative.set(c.id as string, String(parsed.headline));
+        }
+      } catch {
+        // ignore
+      }
     });
-
-    const recentCreativeIds = (creatives ?? []).map((c) => c.id) as string[];
-    if (recentCreativeIds.length > 0) {
-      const { data: imgRows } = await supabase
-        .from("creative_images")
-        .select("creative_id, image_url, variant_index")
-        .in("creative_id", recentCreativeIds)
-        .order("variant_index", { ascending: true });
-
-      // Map creative -> first image
-      const firstByCreative = new Map<string, string>();
-      (imgRows ?? []).forEach((row) => {
-        const cid = row.creative_id as string;
-        if (!firstByCreative.has(cid))
-          firstByCreative.set(cid, row.image_url as string);
-      });
-
-      // Build thumb array per project (max 3)
-      (creatives ?? []).forEach((c) => {
-        const pid = c.project_id as string;
-        const url = firstByCreative.get(c.id as string);
-        if (!url) return;
-        const arr = thumbsByProject.get(pid) ?? [];
-        if (arr.length < 3) arr.push(url);
-        thumbsByProject.set(pid, arr);
-      });
-    }
   }
 
+  const scheduled: ScheduledRender[] = (renderRows ?? []).map((r) => ({
+    id: r.id as string,
+    creativeId: r.creative_id as string,
+    scheduledAt: r.scheduled_at as string,
+    postStatus: (r.post_status as PostStatus) ?? "draft",
+    templateKind: r.template_kind as TemplateKind,
+    targetPlatform: (r.target_platform as string | null) ?? null,
+    outputUrl: (r.output_url as string | null) ?? null,
+    projectId: projectByCreative.get(r.creative_id as string) ?? null,
+    creativeHeadline: headlineByCreative.get(r.creative_id as string) ?? "—",
+  }));
+
+  // 4) Build 28-day calendar starting today
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days: {
+    date: Date;
+    key: string;
+    items: ScheduledRender[];
+  }[] = [];
+  for (let i = 0; i < 28; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    days.push({
+      date: d,
+      key: d.toISOString().slice(0, 10),
+      items: [],
+    });
+  }
+  const dayByKey = new Map(days.map((d) => [d.key, d]));
+  for (const s of scheduled) {
+    const k = new Date(s.scheduledAt).toISOString().slice(0, 10);
+    const entry = dayByKey.get(k);
+    if (entry) entry.items.push(s);
+  }
+
+  // Counts pro Status für Kopf
+  const counts = {
+    total: scheduled.length,
+    draft: scheduled.filter((s) => s.postStatus === "draft").length,
+    scheduled: scheduled.filter((s) => s.postStatus === "scheduled").length,
+    live: scheduled.filter((s) => s.postStatus === "live").length,
+  };
+
   return (
-    <div className="mx-auto max-w-5xl">
-      <header className="mb-6 rounded-2xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 px-6 py-7 text-white shadow-xl shadow-blue-900/20">
-        <h1 className="text-3xl font-bold tracking-tight">Projekte</h1>
-        <p className="mt-1 max-w-xl text-sm text-blue-100">
-          Bündele Creatives nach Kampagne, Kunde oder Kanal. Ein Creative kann
-          zu höchstens einem Projekt gehören.
-        </p>
-      </header>
+    <div className="-mx-8 -my-8 flex h-[calc(100vh-64px)] flex-1 overflow-hidden">
+      {/* Sidebar: Projekte */}
+      <aside className="flex w-[260px] shrink-0 flex-col border-r border-[var(--color-line)] bg-white">
+        <div className="border-b border-[var(--color-line)] px-4 py-3">
+          <h1 className="text-[18px] font-semibold tracking-tight text-[var(--foreground)]">
+            Plan
+          </h1>
+          <p className="mt-0.5 text-[11px] text-[var(--color-muted)]">
+            {projects.length} Projekt{projects.length === 1 ? "" : "e"} ·{" "}
+            {counts.total} geplante Posts
+          </p>
+        </div>
 
-      {error && (
-        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error.message}
-        </p>
-      )}
+        <div className="border-b border-[var(--color-line)] p-3">
+          <CreateProjectForm />
+        </div>
 
-      <CreateProjectForm />
+        <nav className="flex-1 overflow-y-auto p-2">
+          <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
+            Projekte
+          </p>
+          {projects.length === 0 ? (
+            <p className="px-2 py-3 text-[12px] text-[var(--color-muted)]">
+              Noch keine Projekte.
+            </p>
+          ) : (
+            <ul className="space-y-0.5">
+              {projects.map((p) => (
+                <li key={p.id}>
+                  <Link
+                    href={`/dashboard/projects/${p.id}`}
+                    className="flex items-center justify-between rounded-md px-2 py-1.5 text-[12px] text-[var(--foreground)] hover:bg-[var(--color-surface)]"
+                  >
+                    <span className="flex items-center gap-1.5 truncate">
+                      <Icon
+                        name="folder"
+                        className="size-3.5 text-[var(--color-muted)]"
+                      />
+                      <span className="truncate">{p.name}</span>
+                    </span>
+                    <Icon
+                      name="chevron-right"
+                      className="size-3 text-[var(--color-muted)]"
+                    />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </nav>
+      </aside>
 
-      <section className="mt-6">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-blue-900">
-          Deine Projekte ({list.length})
-        </h2>
+      {/* Main: Kalender */}
+      <main className="flex-1 overflow-y-auto bg-[var(--color-surface)] px-8 py-8">
+        <div className="mx-auto max-w-5xl">
+          <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
+                Nächste 4 Wochen
+              </p>
+              <h2 className="mt-0.5 text-[24px] font-semibold tracking-tight text-[var(--foreground)]">
+                Kalender
+              </h2>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] text-[var(--color-muted)]">
+              <Stat label="Draft" value={counts.draft} />
+              <Stat label="Scheduled" value={counts.scheduled} />
+              <Stat label="Live" value={counts.live} />
+            </div>
+          </header>
 
-        {list.length === 0 ? (
-          <div className="mt-3 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500 shadow-sm">
-            Noch keine Projekte. Lege oben das erste an.
-          </div>
-        ) : (
-          <ul className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {list.map((p) => (
-              <li key={p.id}>
-                <ProjectCard
-                  project={p}
-                  creativeCount={countByProject.get(p.id) ?? 0}
-                  thumbs={thumbsByProject.get(p.id) ?? []}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          {/* Kalender-Grid */}
+          <CalendarGrid days={days} today={today} />
+
+          {/* Items als Liste — direkt unter dem Kalender */}
+          {counts.total > 0 ? (
+            <section className="mt-8">
+              <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
+                Posts der nächsten Tage
+              </p>
+              <div className="mt-2 space-y-2">
+                {scheduled.slice(0, 20).map((s) => (
+                  <PostRow key={s.id} item={s} />
+                ))}
+              </div>
+            </section>
+          ) : (
+            <section className="mt-8 rounded-xl border border-dashed border-[var(--color-line)] bg-white p-10 text-center">
+              <h3 className="text-[15px] font-semibold text-[var(--foreground)]">
+                Noch nichts geplant
+              </h3>
+              <p className="mt-1 text-[13px] text-[var(--color-muted)]">
+                Im Studio Renders auf „Approve“ setzen, Datum + Plattform
+                wählen — dann landen sie hier.
+              </p>
+              <Link
+                href="/dashboard/library"
+                className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[var(--foreground)] px-4 py-1.5 text-[12px] font-medium text-white hover:opacity-90"
+              >
+                Zum Studio
+                <Icon name="chevron-right" className="size-3.5" />
+              </Link>
+            </section>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
 
-function ProjectCard({
-  project,
-  creativeCount,
-  thumbs,
-}: {
-  project: ProjectRow;
-  creativeCount: number;
-  thumbs: string[];
-}) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <Link
-      href={`/dashboard/projects/${project.id}`}
-      className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md shadow-blue-900/5 transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-900/10"
-    >
-      <div className="grid h-32 grid-cols-3 gap-0.5 bg-slate-100">
-        {[0, 1, 2].map((i) => {
-          const url = thumbs[i];
-          return url ? (
-            <div key={i} className="overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={url}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            </div>
-          ) : (
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-[15px] font-semibold tabular-nums text-[var(--foreground)]">
+        {value}
+      </span>
+      <span className="uppercase tracking-[0.08em]">{label}</span>
+    </div>
+  );
+}
+
+function CalendarGrid({
+  days,
+  today,
+}: {
+  days: { date: Date; key: string; items: ScheduledRender[] }[];
+  today: Date;
+}) {
+  const maxItems = Math.max(1, ...days.map((d) => d.items.length));
+  const weekdays = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  return (
+    <div>
+      <div className="mb-1.5 grid grid-cols-7 gap-1 text-center text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-muted)]">
+        {weekdays.map((w) => (
+          <span key={w}>{w}</span>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {days.map((d) => {
+          const isToday = d.date.getTime() === today.getTime();
+          const heat = d.items.length / maxItems;
+          const intensity = Math.floor(heat * 4); // 0..4
+          const bg = [
+            "bg-white",
+            "bg-[var(--color-surface)]",
+            "bg-[var(--color-line)]",
+            "bg-[var(--color-muted)]",
+            "bg-[var(--foreground)]",
+          ][intensity];
+          const text =
+            intensity >= 3
+              ? "text-white"
+              : "text-[var(--foreground)]";
+          return (
             <div
-              key={i}
-              className="flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-[10px] text-slate-400"
+              key={d.key}
+              className={
+                "flex aspect-square flex-col rounded-lg border border-[var(--color-line)] p-1.5 " +
+                bg +
+                " " +
+                text +
+                (isToday ? " ring-2 ring-[var(--foreground)]" : "")
+              }
             >
-              {i === 0 && thumbs.length === 0 ? "leer" : ""}
+              <span className="text-[14px] font-semibold tabular-nums leading-none">
+                {d.date.getDate()}
+              </span>
+              {d.items.length > 0 && (
+                <span
+                  className={
+                    "mt-auto text-[10px] tabular-nums " +
+                    (intensity >= 3 ? "opacity-90" : "opacity-70")
+                  }
+                >
+                  {d.items.length} Post{d.items.length === 1 ? "" : "s"}
+                </span>
+              )}
             </div>
           );
         })}
       </div>
-      <div className="flex flex-1 flex-col p-4">
-        <p className="truncate text-base font-bold text-slate-900">
-          {project.name}
-        </p>
-        {project.description ? (
-          <p className="mt-1 line-clamp-2 text-xs text-slate-600">
-            {project.description}
-          </p>
-        ) : (
-          <p className="mt-1 text-xs italic text-slate-400">
-            Keine Beschreibung
-          </p>
-        )}
-        <div className="mt-auto flex items-center justify-between pt-3 text-xs">
-          <span className="font-semibold text-blue-800">
-            {creativeCount} Creative{creativeCount === 1 ? "" : "s"}
-          </span>
-          <span className="text-slate-400">
-            {new Date(project.created_at).toLocaleDateString("de-DE")}
-          </span>
+    </div>
+  );
+}
+
+function PostRow({ item }: { item: ScheduledRender }) {
+  const tplMeta = TEMPLATE_META[item.templateKind];
+  const platformLabel = item.targetPlatform
+    ? (TARGET_PLATFORMS.find((p) => p.value === item.targetPlatform)?.label ??
+      item.targetPlatform)
+    : null;
+  const date = new Date(item.scheduledAt);
+  const dateLabel = date.toLocaleDateString("de-DE", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  const timeLabel = date.toLocaleTimeString("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return (
+    <Link
+      href={`/dashboard/library/${item.creativeId}`}
+      className="flex items-center gap-3 rounded-xl border border-[var(--color-line)] bg-white px-3 py-2 hover:bg-[var(--color-surface)]"
+    >
+      {item.outputUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.outputUrl}
+          alt=""
+          className="h-10 w-10 shrink-0 rounded border border-[var(--color-line)] object-cover"
+        />
+      ) : (
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-dashed border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-muted)]">
+          <Icon name="image" className="size-4" />
         </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-medium text-[var(--foreground)]">
+          {item.creativeHeadline}
+        </p>
+        <p className="truncate text-[11px] text-[var(--color-muted)]">
+          {tplMeta?.label ?? item.templateKind}
+          {platformLabel ? ` · ${platformLabel}` : ""}
+        </p>
       </div>
+      <div className="shrink-0 text-right text-[11px] tabular-nums text-[var(--color-muted)]">
+        <p>{dateLabel}</p>
+        <p>{timeLabel}</p>
+      </div>
+      <span
+        className={
+          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em] " +
+          (item.postStatus === "live"
+            ? "bg-[var(--foreground)] text-white"
+            : "bg-[var(--color-surface)] text-[var(--foreground)]")
+        }
+      >
+        {item.postStatus}
+      </span>
     </Link>
   );
 }

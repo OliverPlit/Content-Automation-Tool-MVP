@@ -159,6 +159,12 @@ export type GeneratedVariant = z.infer<typeof generatedVariantSchema> & {
   hook?: HookValue;
   framework?: FrameworkValue;
   lever?: PersuasionLeverValue | null;
+  // Aufgelöster Bild-Stil dieser Variante (bei "auto" rotiert er pro Variante).
+  // Für die Feature-Persistenz (Self-Learning Phase 0).
+  imageStyle?: ImageStyleValue;
+  // Self-Learning Phase 3 — erwartete CTR (Anteil 0..1) + Daten-Konfidenz.
+  predictedCtr?: number;
+  predictedCtrConfidence?: number;
 };
 
 // Loose schema — zum Parsen aus der DB, damit Legacy-Rows (vor diesem

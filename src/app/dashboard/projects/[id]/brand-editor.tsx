@@ -37,7 +37,7 @@ export function BrandEditor({
   return (
     <form
       action={action}
-      className="mt-1 space-y-2 rounded-md border border-amber-200 bg-amber-50/40 p-2"
+      className="mt-1 space-y-2 rounded-md border border-slate-200 bg-slate-50/40 p-2"
     >
       <input type="hidden" name="folderId" value={folder.id} />
       <input type="hidden" name="projectId" value={projectId} />
@@ -71,7 +71,7 @@ export function BrandEditor({
 
       {/* Presets */}
       <div>
-        <p className="mb-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-900/80">
+        <p className="mb-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-900/80">
           Quick-Start
         </p>
         <div className="flex flex-wrap gap-1">
@@ -80,7 +80,7 @@ export function BrandEditor({
               key={p.name}
               type="button"
               onClick={() => applyPreset(p)}
-              className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] hover:border-amber-400"
+              className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] hover:border-slate-400"
               title={p.name}
             >
               <span
@@ -123,14 +123,14 @@ export function BrandEditor({
 
       {/* Font */}
       <div>
-        <label className="block text-[9px] font-semibold uppercase tracking-wide text-amber-900/80">
+        <label className="block text-[9px] font-semibold uppercase tracking-wide text-slate-900/80">
           Schriftart
         </label>
         <select
           name="fontFamily"
           value={font}
           onChange={(e) => setFont(e.target.value)}
-          className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-[11px] focus:border-amber-700 focus:outline-none"
+          className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-[11px] focus:border-slate-700 focus:outline-none"
         >
           <option value="">— Template-Default —</option>
           {FONT_OPTIONS.map((f) => (
@@ -142,14 +142,14 @@ export function BrandEditor({
       </div>
 
       <div>
-        <label className="block text-[9px] font-semibold uppercase tracking-wide text-amber-900/80">
+        <label className="block text-[9px] font-semibold uppercase tracking-wide text-slate-900/80">
           Gewicht
         </label>
         <select
           name="fontWeight"
           value={weight}
           onChange={(e) => setWeight(e.target.value)}
-          className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-[11px] focus:border-amber-700 focus:outline-none"
+          className="mt-0.5 block w-full rounded-md border border-slate-300 px-2 py-1 text-[11px] focus:border-slate-700 focus:outline-none"
         >
           <option value="">— Template-Default —</option>
           {WEIGHT_OPTIONS.map((w) => (
@@ -161,12 +161,12 @@ export function BrandEditor({
       </div>
 
       {state.error && (
-        <p className="rounded bg-red-50 px-2 py-0.5 text-[10px] text-red-700">
+        <p className="rounded bg-slate-50 px-2 py-0.5 text-[10px] text-slate-700">
           {state.error}
         </p>
       )}
       {state.ok && state.folderId === folder.id && (
-        <p className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-800">
+        <p className="rounded bg-slate-50 px-2 py-0.5 text-[10px] text-slate-800">
           ✓ Gespeichert · gilt für neue Renders
         </p>
       )}
@@ -174,7 +174,7 @@ export function BrandEditor({
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-md bg-amber-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-amber-800 disabled:opacity-60"
+        className="w-full rounded-md bg-slate-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
       >
         {pending ? "Speichere…" : "Brand speichern"}
       </button>
@@ -195,7 +195,7 @@ function ColorInput({
 }) {
   return (
     <label className="block">
-      <span className="block text-[9px] font-semibold uppercase tracking-wide text-amber-900/80">
+      <span className="block text-[9px] font-semibold uppercase tracking-wide text-slate-900/80">
         {label}
       </span>
       <div className="mt-0.5 flex items-center gap-1">
@@ -211,7 +211,7 @@ function ColorInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="#0F172A"
-          className="flex-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] focus:border-amber-700 focus:outline-none"
+          className="flex-1 rounded-md border border-slate-300 px-2 py-1 text-[10px] focus:border-slate-700 focus:outline-none"
         />
       </div>
     </label>

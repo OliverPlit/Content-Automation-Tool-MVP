@@ -37,6 +37,15 @@ export type GenerateSessionData = {
   projectId?: string;
   /** UUID des Ziel-Folders im Projekt. Leerer String = „kein Folder". */
   folderId?: string;
+  /** RF-Brand: Logo-URL aus letztem Crawl. */
+  logoUrl?: string;
+  /** RF-Brand: 4 Farb-Slots aus letztem Crawl. */
+  brandColors?: {
+    primary: string;
+    accent: string;
+    background: string;
+    text: string;
+  } | null;
 };
 
 export function loadSession(): GenerateSessionData | null {

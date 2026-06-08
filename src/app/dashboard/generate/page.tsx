@@ -12,11 +12,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/icon";
 import {
   generateAdCopy,
+  getWinnerSeeds,
   rateVariant,
   saveAllVariants,
   saveCreative,
   type BundleSaveState,
   type RatingState,
+  type WinnerSeed,
 } from "./actions";
 import { saveGenerateTemplate } from "../templates/actions";
 import { MetaImportZone } from "./meta-import-zone";
@@ -379,6 +381,23 @@ export default function GeneratePage() {
   const [templateError, setTemplateError] = useState<string | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
 
+  // Phase 4: Top-Performer als Seeds. Klick → füllt das Form über denselben
+  // Pfad wie eine Vorlage vor (Hook+Stil+Framework vom Gewinner, Angle offen).
+  const [winnerSeeds, setWinnerSeeds] = useState<WinnerSeed[]>([]);
+  useEffect(() => {
+    getWinnerSeeds()
+      .then(setWinnerSeeds)
+      .catch(() => setWinnerSeeds([]));
+  }, []);
+  const applyWinnerSeed = (seed: WinnerSeed) => {
+    setLoadedTemplate({
+      id: `seed:${seed.id}`,
+      name: `Gewinner: ${seed.headline}`,
+      data: seed.data,
+    });
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   useEffect(() => {
     if (!templateId) return;
     // Diese Effekt-State-Updates sind legitime "Daten aus Fetch in lokalen
@@ -485,6 +504,45 @@ export default function GeneratePage() {
       {templateError && (
         <div className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
           Vorlage konnte nicht geladen werden: {templateError}
+        </div>
+      )}
+
+      {/* Phase 4 — Top-Performer als Seeds übernehmen (genetische Iteration) */}
+      {winnerSeeds.length > 0 && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+          <p className="text-[13px] font-semibold text-emerald-900">
+            🏆 Top-Performer als Vorlage übernehmen
+          </p>
+          <p className="mt-0.5 text-[11px] text-emerald-800/80">
+            Gemessene Gewinner (≥ P95 / 2× Median). Übernimmt Hook + Stil +
+            Framework — der Winkel rotiert neu (Mutation Richtung Spitze).
+          </p>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {winnerSeeds.map((s) => (
+              <div
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-1.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-medium text-[var(--foreground)]">
+                    {s.headline}
+                  </p>
+                  <p className="text-[10px] text-[var(--color-muted)]">
+                    CTR {s.ctr.toFixed(1)}% · {s.impressions.toLocaleString("de-DE")} Impr.
+                    {s.data.hookHint ? ` · Hook: ${s.data.hookHint}` : ""}
+                    {s.data.imageStyle ? ` · Stil: ${s.data.imageStyle}` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => applyWinnerSeed(s)}
+                  className="shrink-0 rounded-full bg-emerald-700 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-600"
+                >
+                  Als Vorlage übernehmen
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -926,6 +984,11 @@ function ResultsGrid({
   input: GenerateInput;
 }) {
   const imageCount = variants.filter((v) => v.imageUrl).length;
+  // Phase 3: höchste erwartete CTR im Batch → markiert den „Top-Pick".
+  const topPredictedCtr = variants.reduce(
+    (max, v) => Math.max(max, v.predictedCtr ?? 0),
+    0,
+  );
 
   return (
     <div>
@@ -953,6 +1016,7 @@ function ResultsGrid({
             variant={v}
             input={input}
             projectId={input.projectId ?? ""}
+            isTopPick={topPredictedCtr > 0 && (v.predictedCtr ?? 0) === topPredictedCtr}
           />
         ))}
       </div>
@@ -995,6 +1059,11 @@ function BundleSaveButton({
       imagePrompt: v.imagePrompt,
       previewImageUrl,
       productImageUrl: v.productImageUrl ?? "",
+      // Self-Learning Phase 0 — Achsen-Features je Variante.
+      hook: v.hook ?? "",
+      framework: v.framework ?? "",
+      lever: v.lever ?? "",
+      imageStyle: v.imageStyle ?? "",
     };
   });
 
@@ -1015,6 +1084,10 @@ function BundleSaveButton({
         name="brandColors"
         value={input.brandColors ? JSON.stringify(input.brandColors) : ""}
       />
+      {/* Self-Learning Phase 0 — run-weite Features. */}
+      <input type="hidden" name="awareness" value={String(input.awareness ?? "")} />
+      <input type="hidden" name="platform" value={input.platform ?? ""} />
+      <input type="hidden" name="audienceSegment" value={input.persona ?? ""} />
       <input type="hidden" name="variantsJson" value={JSON.stringify(payload)} />
 
       {state.ok && state.savedId && (
@@ -1049,10 +1122,12 @@ function VariantCard({
   variant,
   input,
   projectId,
+  isTopPick = false,
 }: {
   variant: GeneratedVariant;
   input: GenerateInput;
   projectId: string;
+  isTopPick?: boolean;
 }) {
   const [saveState, saveAction, saving] = useActionState(
     saveCreative,
@@ -1155,6 +1230,25 @@ function VariantCard({
 
       {/* Text-Block */}
       <div className="flex flex-1 flex-col gap-2 p-4">
+        {/* Phase 3: erwartete CTR (Render-Priorisierung) + Top-Pick-Badge */}
+        {variant.predictedCtr != null && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+              Erwartete CTR ~{(variant.predictedCtr * 100).toFixed(1)}%
+              {variant.predictedCtrConfidence != null &&
+                variant.predictedCtrConfidence < 0.15 && (
+                  <span className="text-slate-400" title="Noch wenig eigene Daten — Schätzung beruht v. a. auf Benchmarks">
+                    · grob
+                  </span>
+                )}
+            </span>
+            {isTopPick && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                ★ Top-Pick
+              </span>
+            )}
+          </div>
+        )}
         <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
           Headline
         </p>
@@ -1220,6 +1314,14 @@ function VariantCard({
               name="brandColors"
               value={input.brandColors ? JSON.stringify(input.brandColors) : ""}
             />
+            {/* Self-Learning Phase 0 — Achsen-Features. */}
+            <input type="hidden" name="hook" value={variant.hook ?? ""} />
+            <input type="hidden" name="framework" value={variant.framework ?? ""} />
+            <input type="hidden" name="lever" value={variant.lever ?? ""} />
+            <input type="hidden" name="imageStyle" value={variant.imageStyle ?? ""} />
+            <input type="hidden" name="awareness" value={String(input.awareness ?? "")} />
+            <input type="hidden" name="platform" value={input.platform ?? ""} />
+            <input type="hidden" name="audienceSegment" value={input.persona ?? ""} />
             <button
               type="submit"
               disabled={saving || justSaved}

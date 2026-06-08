@@ -14,6 +14,7 @@ import {
   extractProductsInsights,
   type AnyInsights,
 } from "@/lib/meta-import/insights";
+import { matchAdsToOutcomes } from "@/lib/meta-import/match-outcomes";
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_EXT = ["csv", "tsv", "txt"];
@@ -128,12 +129,26 @@ export async function POST(req: Request) {
       );
     }
 
+    // Self-Learning Phase 1: Bei Ads-Performance die Rows den gespeicherten
+    // Creatives zuordnen und echte Outcomes schreiben. Soft-fail — der Import
+    // selbst soll nie an der Zuordnung scheitern.
+    let outcomeMatch: { matched: number; unmatched: number; total: number } | null =
+      null;
+    if (kind === "ads_performance") {
+      try {
+        outcomeMatch = await matchAdsToOutcomes(supabase, user.id);
+      } catch {
+        outcomeMatch = null;
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       id: row.id,
       kind,
       rowCount: records.length,
       insights: insights.data,
+      outcomeMatch,
       detection: {
         autoDetected: detected.kind === kind,
         confidence: Math.round(detected.confidence * 100),
@@ -144,6 +159,31 @@ export async function POST(req: Request) {
     const msg = err instanceof Error ? err.message : "Unbekannter Fehler.";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
+}
+
+// DELETE: einen Import des Users entfernen (?id=<uuid>). RLS erlaubt nur
+// das Löschen eigener Zeilen.
+export async function DELETE(req: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Nicht eingeloggt." }, { status: 401 });
+  }
+  const id = new URL(req.url).searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "id fehlt." }, { status: 400 });
+  }
+  const { error } = await supabase
+    .from("meta_imports")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true });
 }
 
 // GET: letzte Imports für den User (für UI-Anzeige nach Reload)

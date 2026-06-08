@@ -37,18 +37,18 @@ export default async function GalleryPage({
 
   return (
     <div className="mx-auto max-w-7xl">
-      <header className="mb-6 rounded-2xl bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 px-6 py-7 text-white shadow-xl shadow-blue-900/20">
+      <header className="mb-6 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-7 text-white shadow-xl shadow-slate-900/20">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">🖼️ Galerie</h1>
-            <p className="mt-1 max-w-2xl text-sm text-blue-100">
+            <p className="mt-1 max-w-2xl text-sm text-slate-100">
               Alle Bilder an einem Ort — AI-generiert, hochgeladen, gescrapt,
               aus Creatives. Filter, taggen, weiterverwenden.
             </p>
           </div>
           <Link
             href="/dashboard/images/new"
-            className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-blue-900 shadow-md hover:bg-blue-50"
+            className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-md hover:bg-slate-50"
           >
             ✨ Neues Bild
           </Link>
@@ -56,13 +56,13 @@ export default async function GalleryPage({
       </header>
 
       {error && (
-        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
           {error.message}
         </p>
       )}
 
-      <form className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-blue-900/5">
-        <label className="flex flex-col text-xs font-semibold uppercase tracking-wider text-blue-900">
+      <form className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-slate-900/5">
+        <label className="flex flex-col text-xs font-semibold uppercase tracking-wider text-slate-900">
           Quelle
           <select
             name="source"
@@ -76,7 +76,7 @@ export default async function GalleryPage({
             <option value="creative">🎯 Creative</option>
           </select>
         </label>
-        <label className="flex flex-col text-xs font-semibold uppercase tracking-wider text-blue-900">
+        <label className="flex flex-col text-xs font-semibold uppercase tracking-wider text-slate-900">
           Format
           <select
             name="format"
@@ -90,7 +90,7 @@ export default async function GalleryPage({
             <option value="16:9">16:9</option>
           </select>
         </label>
-        <label className="flex flex-1 flex-col text-xs font-semibold uppercase tracking-wider text-blue-900">
+        <label className="flex flex-1 flex-col text-xs font-semibold uppercase tracking-wider text-slate-900">
           Suche (Prompt / Tag)
           <input
             type="text"
@@ -102,13 +102,13 @@ export default async function GalleryPage({
         </label>
         <button
           type="submit"
-          className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-md hover:bg-blue-800"
+          className="rounded-lg bg-slate-700 px-4 py-2 text-sm font-semibold text-white shadow-md hover:bg-slate-800"
         >
           Filtern
         </button>
       </form>
 
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-blue-900">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-900">
         {assets.length} Asset{assets.length === 1 ? "" : "s"}
       </p>
 
@@ -117,14 +117,14 @@ export default async function GalleryPage({
           Noch keine Bilder. Generiere welche im{" "}
           <Link
             href="/dashboard/generate"
-            className="font-semibold text-blue-700 hover:text-blue-900"
+            className="font-semibold text-slate-700 hover:text-slate-900"
           >
             Generate
           </Link>{" "}
           oder im{" "}
           <Link
             href="/dashboard/images/new"
-            className="font-semibold text-blue-700 hover:text-blue-900"
+            className="font-semibold text-slate-700 hover:text-slate-900"
           >
             Standalone-Generator
           </Link>

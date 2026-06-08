@@ -83,7 +83,7 @@ export function VariantImageBlock({
     ((source === "upload" || source === "url") && !customImageUrl);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-blue-900/5">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md shadow-slate-900/5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold text-slate-900">Bild</h2>
         <span className="text-xs text-slate-500">
@@ -92,7 +92,7 @@ export function VariantImageBlock({
       </div>
 
       {state.error && (
-        <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700">
           {state.error}
         </p>
       )}
@@ -171,13 +171,13 @@ export function VariantImageBlock({
                 accept="image/jpeg,image/png,image/webp"
                 onChange={handleFileChange}
                 disabled={uploading || pending}
-                className="mt-1 block w-full text-xs text-slate-700 file:mr-2 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-800 hover:file:bg-blue-100 disabled:opacity-60"
+                className="mt-1 block w-full text-xs text-slate-700 file:mr-2 file:rounded-md file:border-0 file:bg-slate-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-800 hover:file:bg-slate-100 disabled:opacity-60"
               />
               {uploading && (
-                <p className="mt-1 text-xs text-blue-700">⏳ Lädt hoch…</p>
+                <p className="mt-1 text-xs text-slate-700">⏳ Lädt hoch…</p>
               )}
               {!uploading && customImageUrl && (
-                <p className="mt-1 text-xs text-emerald-700">
+                <p className="mt-1 text-xs text-slate-700">
                   ✓ Hochgeladen — bereit zum Speichern.
                 </p>
               )}
@@ -195,13 +195,13 @@ export function VariantImageBlock({
                 onChange={(e) => setCustomImageUrl(e.target.value)}
                 placeholder="https://example.com/image.jpg"
                 disabled={pending}
-                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700 disabled:opacity-60"
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700 disabled:opacity-60"
               />
             </div>
           )}
 
           {sourceError && (
-            <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+            <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
               {sourceError}
             </p>
           )}
@@ -230,7 +230,7 @@ export function VariantImageBlock({
               <button
                 type="submit"
                 disabled={submitDisabled}
-                className="rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                className="rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-slate-900/30 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
                 {pending
                   ? source === "ai"
@@ -257,7 +257,7 @@ export function VariantImageBlock({
                   <input type="hidden" name="variantIndex" value={variantIndex} />
                   <button
                     type="submit"
-                    className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                    className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                   >
                     Bild löschen
                   </button>
@@ -421,7 +421,7 @@ function ProductImageSubBlock({
                   checked={bgRemove}
                   onChange={(e) => setBgRemove(e.target.checked)}
                   disabled={uploading || pending}
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-blue-700 focus:ring-blue-700 disabled:opacity-60"
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-slate-700 focus:ring-slate-700 disabled:opacity-60"
                 />
                 <span>
                   🪄 Hintergrund automatisch entfernen{" "}
@@ -433,15 +433,15 @@ function ProductImageSubBlock({
                 accept="image/jpeg,image/png,image/webp"
                 onChange={handleFile}
                 disabled={uploading || pending}
-                className="block w-full text-xs text-slate-700 file:mr-2 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-800 hover:file:bg-blue-100 disabled:opacity-60"
+                className="block w-full text-xs text-slate-700 file:mr-2 file:rounded-md file:border-0 file:bg-slate-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-800 hover:file:bg-slate-100 disabled:opacity-60"
               />
               {uploading && (
-                <p className="text-xs text-blue-700">
+                <p className="text-xs text-slate-700">
                   ⏳ {bgStage ?? "Lädt hoch…"}
                 </p>
               )}
               {!uploading && customUrl && (
-                <p className="text-xs text-emerald-700">
+                <p className="text-xs text-slate-700">
                   ✓ Bereit zum Speichern
                   {bgRemove ? " (mit transparentem Hintergrund)" : ""}
                 </p>
@@ -454,17 +454,17 @@ function ProductImageSubBlock({
               onChange={(e) => setCustomUrl(e.target.value)}
               placeholder="https://example.com/product.png"
               disabled={pending}
-              className="block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-700 disabled:opacity-60"
+              className="block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-700 disabled:opacity-60"
             />
           )}
 
           {uploadErr && (
-            <p className="rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700">
+            <p className="rounded-md bg-slate-50 px-3 py-1.5 text-xs text-slate-700">
               {uploadErr}
             </p>
           )}
           {state.error && (
-            <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-red-50 px-3 py-2 font-sans text-xs text-red-700">
+            <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-slate-50 px-3 py-2 font-sans text-xs text-slate-700">
               {state.error}
             </pre>
           )}
@@ -478,7 +478,7 @@ function ProductImageSubBlock({
               <button
                 type="submit"
                 disabled={submitDisabled}
-                className="rounded-md bg-gradient-to-br from-emerald-600 to-emerald-800 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                className="rounded-md bg-gradient-to-br from-slate-600 to-slate-800 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
               >
                 {pending
                   ? "Speichere…"
@@ -493,7 +493,7 @@ function ProductImageSubBlock({
                 <input type="hidden" name="variantIndex" value={variantIndex} />
                 <button
                   type="submit"
-                  className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                  className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                 >
                   Entfernen
                 </button>
@@ -524,8 +524,8 @@ function TinyTile({
       className={
         "flex items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium transition-all duration-150 " +
         (active
-          ? "border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-300"
-          : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40")
+          ? "border-slate-600 bg-slate-50 text-slate-800 ring-1 ring-slate-300"
+          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/40")
       }
     >
       <span>{icon}</span>
@@ -554,15 +554,15 @@ function SourceTile({
       className={
         "flex flex-col items-center justify-center rounded-lg border px-2 py-2.5 text-center transition-all duration-150 " +
         (active
-          ? "border-blue-700 bg-gradient-to-br from-blue-50 to-white shadow-md shadow-blue-900/10 ring-1 ring-blue-300"
-          : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40")
+          ? "border-slate-700 bg-gradient-to-br from-slate-50 to-white shadow-md shadow-slate-900/10 ring-1 ring-slate-300"
+          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/40")
       }
     >
       <span className="text-lg">{icon}</span>
       <span
         className={
           "mt-0.5 text-[11px] font-semibold " +
-          (active ? "text-blue-900" : "text-slate-700")
+          (active ? "text-slate-900" : "text-slate-700")
         }
       >
         {label}

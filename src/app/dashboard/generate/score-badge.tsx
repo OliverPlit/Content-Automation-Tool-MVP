@@ -19,10 +19,10 @@ export function ScoreBadge({
 
   const tone =
     score >= 80
-      ? "bg-green-100 text-green-900 ring-green-300"
+      ? "bg-slate-100 text-slate-900 ring-slate-300"
       : score >= 60
-        ? "bg-amber-100 text-amber-900 ring-amber-300"
-        : "bg-red-100 text-red-900 ring-red-300";
+        ? "bg-slate-100 text-slate-900 ring-slate-300"
+        : "bg-slate-100 text-slate-900 ring-slate-300";
 
   const title =
     issues.length > 0

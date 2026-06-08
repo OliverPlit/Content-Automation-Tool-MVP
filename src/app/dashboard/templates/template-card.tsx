@@ -38,7 +38,7 @@ export function TemplateCard({ template }: { template: Row }) {
   }
 
   return (
-    <article className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-blue-900/5 transition-shadow hover:shadow-lg">
+    <article className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-slate-900/5 transition-shadow hover:shadow-lg">
       <header className="flex items-start justify-between gap-2">
         <div>
           <h3 className="text-base font-bold text-slate-900">{template.name}</h3>
@@ -49,7 +49,7 @@ export function TemplateCard({ template }: { template: Row }) {
           )}
         </div>
         {isSystem && (
-          <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800 ring-1 ring-blue-200">
+          <span className="rounded bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-800 ring-1 ring-slate-200">
             System
           </span>
         )}
@@ -96,7 +96,7 @@ export function TemplateCard({ template }: { template: Row }) {
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
         <Link
           href={`/dashboard/generate?template=${template.id}`}
-          className="rounded-lg bg-gradient-to-br from-blue-800 to-blue-950 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-900/30 transition-all hover:-translate-y-0.5 hover:shadow-lg"
+          className="rounded-lg bg-gradient-to-br from-slate-800 to-slate-950 px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-slate-900/30 transition-all hover:-translate-y-0.5 hover:shadow-lg"
         >
           ▶ Mit Vorlage generieren
         </Link>
@@ -113,7 +113,7 @@ export function TemplateCard({ template }: { template: Row }) {
               <button
                 type="button"
                 onClick={() => setConfirming(true)}
-                className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
                 Löschen
               </button>
@@ -130,7 +130,7 @@ export function TemplateCard({ template }: { template: Row }) {
                   <input type="hidden" name="id" value={template.id} />
                   <button
                     type="submit"
-                    className="rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-500"
+                    className="rounded-md bg-slate-600 px-2 py-1 text-xs font-semibold text-white hover:bg-slate-500"
                   >
                     Endgültig
                   </button>

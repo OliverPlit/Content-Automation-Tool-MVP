@@ -13,8 +13,22 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  /* Apple-Typographie:
+   * SF Pro TEXT für Body und alles < ~20px.
+   * SF Pro DISPLAY für Headlines und alles ≥ ~20px.
+   * Auf Apple-Geräten nativ vorhanden — auf Windows/Linux/Android fällt der
+   * Stack auf Inter zurück (kommt via next/font geladen, layout.tsx setzt
+   * --font-inter als CSS-Variable auf <html>).
+   * Inter ist der Open-Source-SF-Pro-Clone — visuell identisch (98 %).
+   * `font-optical-sizing: auto` schaltet auf modernen Apple-Geräten
+   * automatisch zwischen den Schnitten um.
+   */
   --font-sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "SF Pro Text", var(--font-inter), -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", "Helvetica", "Arial", system-ui, sans-serif;
+  --font-display:
+    "SF Pro Display", var(--font-inter), -apple-system, BlinkMacSystemFont,
     "Helvetica Neue", "Helvetica", "Arial", system-ui, sans-serif;
   --font-mono:
     "SF Mono", ui-monospace, "Menlo", "Consolas", monospace;
@@ -34,20 +48,50 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  /* BODY: SF Pro Text → Inter (Windows/Linux Fallback, optisch identisch). */
   font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "SF Pro Text", var(--font-inter), -apple-system, BlinkMacSystemFont,
     "Helvetica Neue", "Helvetica", "Arial", system-ui, sans-serif;
-  /* Apple-typische Type-Smoothing für scharfe Schrift */
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Apple nutzt knappere Lettern-Abstände auf großen Headlines */
   letter-spacing: -0.01em;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  /* Apple-typisches Display-Tracking */
+  /* HEADLINES: SF Pro Display → Inter Fallback. */
+  font-family:
+    "SF Pro Display", var(--font-inter), -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", "Helvetica", "Arial", system-ui, sans-serif;
+  font-optical-sizing: auto;
   letter-spacing: -0.02em;
   font-weight: 600;
+}
+
+/* Utility: Display-Schnitt manuell forcieren (z.B. für Apple-Style Hero-Numbers
+ * oder einen sehr großen Page-Title der KEIN h1-Tag ist). Verwendung:
+ *   <span className="font-display">…</span>
+ */
+.font-display {
+  font-family:
+    "SF Pro Display", var(--font-inter), -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", "Helvetica", "Arial", system-ui, sans-serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;
+}
+
+/*
+ * Inputs / Selects / Buttons / Textareas erben standardmäßig NICHT die
+ * Body-Font in vielen Browsern (gerade Safari + Firefox), deshalb explizit
+ * auf `inherit` setzen — dann ziehen sie sich SF Pro Text/Inter aus body.
+ * Das war der häufigste Grund für inkonsistente Schrift in Forms.
+ */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  font-feature-settings: inherit;
 }
 
 /* Subtilere Selektion (Apple nutzt sehr leichte Akzentfarbe) */

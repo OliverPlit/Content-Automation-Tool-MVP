@@ -11,7 +11,20 @@
 // Backwards-Compat: die alten Env-Vars (CREATOMATE_TEMPLATE_STATIC_SQUARE etc.)
 // bleiben als Default-Slot pro Kind erhalten.
 
-export type TemplateKind = "staticSquare" | "animatedSquare" | "reelVertical";
+// Format-Kinds. Die ersten 3 sind die historischen — bleiben für DB-Backwards-Compat
+// (alte creative_renders-Rows haben sie als template_kind gespeichert).
+// Neu dazugekommen sind 4:5 Static (Meta Feed) + 1:1 Static (Insta Feed) +
+// 16:9 Static (LinkedIn/Display) + 1:1 Animated als Reel-Variante.
+export type TemplateKind =
+  | "staticSquare"
+  | "animatedSquare"
+  | "reelVertical"
+  // Neue Format-Kinds (RF1)
+  | "static_1x1"
+  | "static_4x5"
+  | "static_16x9"
+  | "reel_1x1"
+  | "reel_16x9";
 
 export type TemplateKindMeta = {
   kind: TemplateKind;
@@ -19,29 +32,76 @@ export type TemplateKindMeta = {
   description: string;
   aspectRatio: string;
   outputExt: "jpg" | "png" | "mp4";
+  /** Plattform-Hinweis für UI */
+  platforms: string;
 };
 
 export const TEMPLATE_META: Record<TemplateKind, TemplateKindMeta> = {
   staticSquare: {
     kind: "staticSquare",
     label: "Static 9:16",
-    description: "Hochformat-Standbild für Story / Reels-Cover (JPG)",
+    description: "Hochformat-Standbild für Story / Reels-Cover",
     aspectRatio: "9:16",
     outputExt: "jpg",
+    platforms: "Story · Reels-Cover · TikTok",
   },
   animatedSquare: {
     kind: "animatedSquare",
     label: "Animated 1:1",
-    description: "Quadratisches Video für Insta-Feed (MP4, ~5 Sek)",
+    description: "Quadratisches Video für Insta-Feed (~5 Sek)",
     aspectRatio: "1:1",
     outputExt: "mp4",
+    platforms: "Insta Feed · Meta Feed",
   },
   reelVertical: {
     kind: "reelVertical",
     label: "Reel 9:16",
-    description: "Hochformat-Video für Story / Reels / TikTok (MP4, ~6 Sek)",
+    description: "Hochformat-Video für Story / Reels / TikTok (~6 Sek)",
     aspectRatio: "9:16",
     outputExt: "mp4",
+    platforms: "Reels · Stories · TikTok · Shorts",
+  },
+  // Neue Static-Formate
+  static_1x1: {
+    kind: "static_1x1",
+    label: "Static 1:1",
+    description: "Quadratisches Standbild für Insta-Feed",
+    aspectRatio: "1:1",
+    outputExt: "jpg",
+    platforms: "Insta Feed · Meta Feed · LinkedIn",
+  },
+  static_4x5: {
+    kind: "static_4x5",
+    label: "Static 4:5",
+    description: "Vertikales Feed-Bild — höchster CTR auf Meta",
+    aspectRatio: "4:5",
+    outputExt: "jpg",
+    platforms: "Meta Feed (+CTR-Lift)",
+  },
+  static_16x9: {
+    kind: "static_16x9",
+    label: "Static 16:9",
+    description: "Landscape-Bild für LinkedIn / Display",
+    aspectRatio: "16:9",
+    outputExt: "jpg",
+    platforms: "LinkedIn · Google Display · YouTube",
+  },
+  // Neue Animated-Formate
+  reel_1x1: {
+    kind: "reel_1x1",
+    label: "Animated 1:1 (Reel)",
+    description: "Quadratisches Video mit Hook-Animation",
+    aspectRatio: "1:1",
+    outputExt: "mp4",
+    platforms: "Insta Feed · Meta Feed",
+  },
+  reel_16x9: {
+    kind: "reel_16x9",
+    label: "Animated 16:9",
+    description: "Landscape-Video für YouTube / Display",
+    aspectRatio: "16:9",
+    outputExt: "mp4",
+    platforms: "YouTube · Google Display · LinkedIn",
   },
 };
 
@@ -127,12 +187,78 @@ const TEMPLATE_POOL: TemplateSlotConfig[] = [
     envVar: "CREATOMATE_TEMPLATE_REEL_UGC",
   },
   {
-  slot: "reel_mein_neues_template",
-  kind: "reelVertical",
-  label: "Mein neues Template",
-  description: "Beschreibung für das Dropdown.",
-  envVar: "CREATOMATE_TEMPLATE_REEL_MEIN_NEUES_TEMPLATE",
-}
+    slot: "reel_mein_neues_template",
+    kind: "reelVertical",
+    label: "Mein neues Template",
+    description: "Beschreibung für das Dropdown.",
+    envVar: "CREATOMATE_TEMPLATE_REEL_MEIN_NEUES_TEMPLATE",
+  },
+
+  // ── Static 1:1 (RF1 — Insta Feed Square) ──────────────────────────────
+  {
+    slot: "static_1x1_default",
+    kind: "static_1x1",
+    label: "Default",
+    description: "Quadratisches Standbild für Insta-Feed.",
+    envVar: "CREATOMATE_TEMPLATE_STATIC_1X1",
+  },
+  {
+    slot: "static_1x1_bold",
+    kind: "static_1x1",
+    label: "Bold Headline",
+    description: "Große Headline mit farbigem Block.",
+    envVar: "CREATOMATE_TEMPLATE_STATIC_1X1_BOLD",
+  },
+
+  // ── Static 4:5 (RF1 — Meta Feed Portrait) ─────────────────────────────
+  {
+    slot: "static_4x5_default",
+    kind: "static_4x5",
+    label: "Default",
+    description: "Vertikales 4:5 Feed-Bild für Meta-Feed (+22 % CTR).",
+    envVar: "CREATOMATE_TEMPLATE_STATIC_4X5",
+  },
+  {
+    slot: "static_4x5_bold",
+    kind: "static_4x5",
+    label: "Bold Hook",
+    description: "Großer Hook oben, Produktbild unten.",
+    envVar: "CREATOMATE_TEMPLATE_STATIC_4X5_BOLD",
+  },
+
+  // ── Static 16:9 (RF1 — LinkedIn / Display Landscape) ──────────────────
+  {
+    slot: "static_16x9_default",
+    kind: "static_16x9",
+    label: "Default",
+    description: "Landscape-Bild für LinkedIn-Feed / Google Display.",
+    envVar: "CREATOMATE_TEMPLATE_STATIC_16X9",
+  },
+  {
+    slot: "static_16x9_minimal",
+    kind: "static_16x9",
+    label: "Minimal",
+    description: "Subtile Headline + großer Whitespace.",
+    envVar: "CREATOMATE_TEMPLATE_STATIC_16X9_MINIMAL",
+  },
+
+  // ── Reel 1:1 (RF1 — Square Video für IG Feed) ─────────────────────────
+  {
+    slot: "reel_1x1_default",
+    kind: "reel_1x1",
+    label: "Default",
+    description: "Quadratisches Video mit Hook-Animation.",
+    envVar: "CREATOMATE_TEMPLATE_REEL_1X1",
+  },
+
+  // ── Reel 16:9 (RF1 — Landscape Video YouTube/Display) ─────────────────
+  {
+    slot: "reel_16x9_default",
+    kind: "reel_16x9",
+    label: "Default",
+    description: "Landscape-Video für YouTube-Ads / Display.",
+    envVar: "CREATOMATE_TEMPLATE_REEL_16X9",
+  },
 ];
 
 // Public type for client-side use. envVar bleibt drin, aber das ist nur der
@@ -179,6 +305,11 @@ export function getAllTemplatePools(): Record<TemplateKind, TemplateOption[]> {
     staticSquare: getTemplatePool("staticSquare"),
     animatedSquare: getTemplatePool("animatedSquare"),
     reelVertical: getTemplatePool("reelVertical"),
+    static_1x1: getTemplatePool("static_1x1"),
+    static_4x5: getTemplatePool("static_4x5"),
+    static_16x9: getTemplatePool("static_16x9"),
+    reel_1x1: getTemplatePool("reel_1x1"),
+    reel_16x9: getTemplatePool("reel_16x9"),
   };
 }
 
@@ -248,6 +379,51 @@ export function getDefaultSlot(kind: TemplateKind): string | null {
   return pool.find((p) => p.available)?.slot ?? null;
 }
 
+/**
+ * SERVER-ONLY: Liefert die Env-Var-Namen ALLER Slots eines Kinds.
+ * Hilft für klarere Fehlermeldungen wenn keiner verfügbar ist.
+ */
+export function getEnvVarsForKind(kind: TemplateKind): string[] {
+  return TEMPLATE_POOL.filter((t) => t.kind === kind).map((t) => t.envVar);
+}
+
+/**
+ * SERVER-ONLY: Findet doppelte Creatomate-Template-UUIDs.
+ *
+ * Häufiger User-Fehler: dieselbe UUID in mehrere Env-Vars copy-pasten →
+ * Renders verschiedener Formate produzieren immer das gleiche Output (weil
+ * Creatomate immer dasselbe Template rendert).
+ *
+ * Returns: Array von Gruppen, wo mehrere Slots auf die GLEICHE UUID zeigen.
+ *   [{ uuid, slots: [{ slot, envVar, kind }] }, …]
+ *
+ * Leeres Array = alle Slots haben unique UUIDs (oder sind nicht gesetzt).
+ */
+export function findSharedTemplateIds(): {
+  uuid: string;
+  slots: { slot: string; envVar: string; kind: TemplateKind }[];
+}[] {
+  const byUuid = new Map<
+    string,
+    { slot: string; envVar: string; kind: TemplateKind }[]
+  >();
+  for (const t of TEMPLATE_POOL) {
+    const uuid = cleanEnv(process.env[t.envVar]);
+    if (!uuid) continue;
+    const arr = byUuid.get(uuid) ?? [];
+    arr.push({ slot: t.slot, envVar: t.envVar, kind: t.kind });
+    byUuid.set(uuid, arr);
+  }
+  const dupes: {
+    uuid: string;
+    slots: { slot: string; envVar: string; kind: TemplateKind }[];
+  }[] = [];
+  for (const [uuid, slots] of byUuid.entries()) {
+    if (slots.length > 1) dupes.push({ uuid, slots });
+  }
+  return dupes;
+}
+
 // SERVER-ONLY: Backwards-compat: alte API. Liefert UUID für Default-Slot.
 export function getTemplateId(kind: TemplateKind): string {
   const slot = getDefaultSlot(kind);
@@ -261,5 +437,10 @@ export function getTemplateAvailability(): Record<TemplateKind, boolean> {
     staticSquare: getTemplatePool("staticSquare").some((p) => p.available),
     animatedSquare: getTemplatePool("animatedSquare").some((p) => p.available),
     reelVertical: getTemplatePool("reelVertical").some((p) => p.available),
+    static_1x1: getTemplatePool("static_1x1").some((p) => p.available),
+    static_4x5: getTemplatePool("static_4x5").some((p) => p.available),
+    static_16x9: getTemplatePool("static_16x9").some((p) => p.available),
+    reel_1x1: getTemplatePool("reel_1x1").some((p) => p.available),
+    reel_16x9: getTemplatePool("reel_16x9").some((p) => p.available),
   };
 }

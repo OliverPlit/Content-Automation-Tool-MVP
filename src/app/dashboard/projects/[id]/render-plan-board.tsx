@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CreativeTabs } from "./creative-tabs";
 import { RenderFocusView } from "./render-focus-view";
@@ -19,13 +19,15 @@ export type ProjectRender = {
   id: string;
   creativeId: string;
   variantIndex: number;
-  templateKind: "staticSquare" | "animatedSquare" | "reelVertical";
+  templateKind: import("@/lib/creatomate/templates").TemplateKind | "image";
   outputUrl: string | null;
   status: "pending" | "processing" | "succeeded" | "failed";
   scheduledAt: string | null;
   postStatus: PostStatus;
   targetPlatform: string | null;
   notes: string | null;
+  /** null = nicht in Drafts gespeichert (User hat noch nicht „Speichern" geklickt). */
+  savedAt: string | null;
   // Display-Hints
   creativeHeadline: string;
   creativeBody: string;
@@ -43,12 +45,12 @@ export function RenderPlanBoard({
 }) {
   const [filter, setFilter] = useState<PostStatus | "all">("all");
 
-  // URL-Param ?focus=<id> als initialer Focus-State
-  const [focusedId, setFocusedId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    const url = new URL(window.location.href);
-    return url.searchParams.get("focus");
-  });
+  // Focus-State.
+  // ACHTUNG: Initial IMMER null — sonst Hydration-Mismatch (Server kennt
+  // window.location nicht, Client schon). Den URL-Param `?focus=<id>` lesen
+  // wir einmalig im Auto-Focus-Effect (unten) via Ref-Flag.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const urlInitDone = useRef(false);
 
   // Gefilterte Liste (Pfeiltasten + FocusView nutzen nur diese)
   const filtered = useMemo(
@@ -56,13 +58,28 @@ export function RenderPlanBoard({
     [renders, filter],
   );
 
-  // Wenn der gewählte Focus nicht im gefilterten Set ist → auf erstes Element
+  // Wenn der gewählte Focus nicht im gefilterten Set ist → auf erstes Element.
+  // Beim ersten Mount wird stattdessen — wenn vorhanden — der URL-Param
+  // `?focus=<id>` übernommen (Hydration-safe: läuft nur Client-seitig).
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
     if (filtered.length === 0) {
       setFocusedId(null);
       return;
     }
+
+    // One-shot URL-Hydration vor dem ersten Auto-Pick
+    if (!urlInitDone.current) {
+      urlInitDone.current = true;
+      if (typeof window !== "undefined") {
+        const fromUrl = new URL(window.location.href).searchParams.get("focus");
+        if (fromUrl && filtered.some((r) => r.id === fromUrl)) {
+          setFocusedId(fromUrl);
+          return;
+        }
+      }
+    }
+
     if (!focusedId || !filtered.some((r) => r.id === focusedId)) {
       setFocusedId(filtered[0].id);
     }
@@ -227,9 +244,6 @@ export function RenderPlanBoard({
       {/* Meta-Connect-Stub */}
       <MetaConnectStub metaConnected={metaConnected} />
 
-      {/* Kalender-Strip */}
-      <CalendarStrip renders={renders} />
-
       {/* Status-Filter-Pills */}
       <div className="flex flex-wrap gap-1.5">
         <FilterPill
@@ -323,10 +337,10 @@ function RenderCardMini({
       className={
         "group relative overflow-hidden rounded-lg border bg-white text-left shadow-sm transition " +
         (active
-          ? "border-blue-700 ring-2 ring-blue-300"
+          ? "border-slate-700 ring-2 ring-slate-300"
           : creativeBoundary
-            ? "border-amber-200 opacity-70 hover:border-amber-400 hover:opacity-100"
-            : "border-slate-200 hover:border-blue-400")
+            ? "border-slate-200 opacity-70 hover:border-slate-400 hover:opacity-100"
+            : "border-slate-200 hover:border-slate-400")
       }
       title={creativeBoundary ? "Anderes Creative — klick zum Wechseln" : undefined}
     >
@@ -380,12 +394,12 @@ function RenderCardMini({
 // ---------------------------------------------------------------------------
 function MetaConnectStub({ metaConnected }: { metaConnected: boolean }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
       <div>
-        <p className="text-sm font-semibold text-blue-900">
+        <p className="text-sm font-semibold text-slate-900">
           {metaConnected ? "✓ Mit Meta verbunden" : "Mit Meta verbinden (bald)"}
         </p>
-        <p className="mt-0.5 text-xs text-blue-800/80">
+        <p className="mt-0.5 text-xs text-slate-800/80">
           {metaConnected
             ? "Geplante Posts werden automatisch zu Meta gepusht."
             : "Bald: OAuth mit Meta. Bis dahin nutzt du den Plan als Briefing."}
@@ -394,96 +408,11 @@ function MetaConnectStub({ metaConnected }: { metaConnected: boolean }) {
       <button
         type="button"
         disabled
-        className="cursor-not-allowed rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 opacity-60"
+        className="cursor-not-allowed rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 opacity-60"
         title="In Roadmap"
       >
         🔗 Verbinden
       </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Calendar Strip
-// ---------------------------------------------------------------------------
-function CalendarStrip({ renders }: { renders: ProjectRender[] }) {
-  const today = useMemo(() => {
-    const t = new Date();
-    t.setHours(0, 0, 0, 0);
-    return t;
-  }, []);
-
-  const days = useMemo(() => {
-    const arr: { date: Date; key: string; count: number }[] = [];
-    for (let i = 0; i < 28; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      const key = d.toISOString().slice(0, 10);
-      arr.push({ date: d, key, count: 0 });
-    }
-    const byKey = new Map(arr.map((a) => [a.key, a]));
-    for (const r of renders) {
-      if (!r.scheduledAt) continue;
-      const k = new Date(r.scheduledAt).toISOString().slice(0, 10);
-      const entry = byKey.get(k);
-      if (entry) entry.count += 1;
-    }
-    return arr;
-  }, [renders, today]);
-
-  const maxCount = Math.max(1, ...days.map((d) => d.count));
-
-  return (
-    <div>
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-          Nächste 4 Wochen
-        </p>
-        <p className="text-[10px] text-slate-400">
-          {renders.filter((r) => r.scheduledAt).length} geplant
-        </p>
-      </div>
-      <div className="grid grid-cols-7 gap-1 rounded-xl border border-slate-200 bg-white p-2 text-center">
-        {days.map((d) => {
-          const isToday = d.date.getTime() === today.getTime();
-          const dayLabel = d.date.toLocaleDateString("de-DE", {
-            day: "numeric",
-            month: "short",
-          });
-          const weekday = d.date.toLocaleDateString("de-DE", {
-            weekday: "short",
-          });
-          const heat = d.count > 0 ? d.count / maxCount : 0;
-          const bgIntensity = Math.floor(heat * 4);
-          const bgClass = [
-            "bg-slate-50",
-            "bg-blue-100",
-            "bg-blue-200",
-            "bg-blue-400",
-            "bg-blue-700",
-          ][bgIntensity];
-          const textClass = bgIntensity >= 3 ? "text-white" : "text-slate-700";
-          return (
-            <div
-              key={d.key}
-              className={`flex flex-col items-center justify-center rounded-md px-1 py-1.5 text-[10px] ${bgClass} ${textClass} ${
-                isToday ? "ring-2 ring-emerald-500" : ""
-              }`}
-              title={
-                d.count > 0 ? `${d.count} Posts geplant am ${dayLabel}` : dayLabel
-              }
-            >
-              <span className="opacity-70">{weekday}</span>
-              <span className="font-semibold">{d.date.getDate()}</span>
-              {d.count > 0 && (
-                <span className="mt-0.5 rounded-full bg-white/40 px-1.5 text-[9px] font-bold">
-                  {d.count}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -508,8 +437,8 @@ function FilterPill({
       className={
         "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition " +
         (active
-          ? "bg-blue-700 text-white ring-blue-700"
-          : "bg-white text-slate-700 ring-slate-300 hover:bg-blue-50")
+          ? "bg-slate-700 text-white ring-slate-700"
+          : "bg-white text-slate-700 ring-slate-300 hover:bg-slate-50")
       }
     >
       <span>{emoji}</span>
@@ -517,7 +446,7 @@ function FilterPill({
       <span
         className={
           "rounded-full px-1.5 text-[10px] font-bold " +
-          (active ? "bg-blue-900 text-white" : "bg-slate-100 text-slate-600")
+          (active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600")
         }
       >
         {count}
@@ -531,15 +460,15 @@ function statusBadgeClasses(color: string): string {
     case "slate":
       return "bg-slate-700/90 text-white";
     case "amber":
-      return "bg-amber-600 text-white";
+      return "bg-slate-600 text-white";
     case "blue":
-      return "bg-blue-700 text-white";
+      return "bg-slate-700 text-white";
     case "purple":
-      return "bg-purple-700 text-white";
+      return "bg-slate-700 text-white";
     case "emerald":
-      return "bg-emerald-600 text-white";
+      return "bg-slate-600 text-white";
     case "orange":
-      return "bg-orange-600 text-white";
+      return "bg-slate-600 text-white";
     case "stone":
       return "bg-stone-600 text-white";
     default:

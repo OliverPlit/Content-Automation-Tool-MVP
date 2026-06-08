@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { Icon } from "@/components/icon";
+
 type ImportKind = "posts" | "ads_performance" | "audience" | "products";
 
 type ImportRecord = {
@@ -127,18 +129,41 @@ export function MetaImportZone({
     if (file) await handleFile(file);
   };
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    setError(null);
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/meta-import?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setImports((prev) => prev.filter((p) => p.id !== id));
+        setLastSummary(null);
+      } else {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(j.error ?? `Löschen fehlgeschlagen (${res.status}).`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Netzwerk-Fehler.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
-    <details className="rounded-2xl border border-purple-200 bg-purple-50/40 open:bg-white">
-      <summary className="cursor-pointer select-none rounded-2xl px-4 py-3 text-sm font-semibold text-purple-900 hover:bg-purple-100/50">
-        📥 Meta-Daten importieren
-        <span className="ml-2 text-xs font-normal text-purple-700/70">
+    <details className="rounded-lg border border-[var(--color-line)] bg-white">
+      <summary className="cursor-pointer select-none rounded-lg px-3 py-2 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--color-surface)]">
+        Meta-Daten importieren
+        <span className="ml-2 text-[11px] font-normal text-[var(--color-muted)]">
           {imports.length > 0
-            ? `${imports.length} aktiv · fließt in jeden Generate-Run`
-            : "optional — wirkt direkt auf Output-Qualität"}
+            ? `${imports.length} aktiv · wirkt auf jeden Generate-Run`
+            : "optional"}
         </span>
       </summary>
 
-      <div className="space-y-3 border-t border-purple-200 p-4">
+      <div className="space-y-3 border-t border-slate-200 p-4">
         {/* Upload */}
         <div>
           <label className="block text-xs font-medium text-slate-700">
@@ -148,7 +173,7 @@ export function MetaImportZone({
             <select
               value={forceKind}
               onChange={(e) => setForceKind(e.target.value as ImportKind | "")}
-              className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-purple-700 focus:outline-none"
+              className="rounded-md border border-slate-300 px-2 py-1 text-xs focus:border-slate-700 focus:outline-none"
             >
               <option value="">🪄 Typ auto-erkennen</option>
               <option value="posts">📝 Posts-Export</option>
@@ -159,7 +184,7 @@ export function MetaImportZone({
             <label
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
-              className="flex flex-1 cursor-pointer items-center justify-center rounded-md border border-dashed border-purple-300 bg-white px-3 py-2 text-xs text-purple-700 hover:bg-purple-50"
+              className="flex flex-1 cursor-pointer items-center justify-center rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
             >
               {uploading ? "⏳ Verarbeite…" : "📂 CSV hierherziehen oder klicken"}
               <input
@@ -182,7 +207,7 @@ export function MetaImportZone({
 
         {/* Last-Upload-Summary */}
         {lastSummary && (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900">
             ✓ <strong>{KIND_META[lastSummary.kind].label}</strong> importiert ·{" "}
             {lastSummary.rowCount} Rows
             {lastSummary.autoDetected
@@ -192,19 +217,19 @@ export function MetaImportZone({
         )}
 
         {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
             <p className="font-semibold">{error}</p>
             {detectedHeaders && detectedHeaders.length > 0 && (
               <>
-                <p className="mt-1.5 text-red-900">
+                <p className="mt-1.5 text-slate-900">
                   ↑ Wähle oben im Dropdown den CSV-Typ manuell aus —
                   dann läuft der Import durch.
                 </p>
                 <details className="mt-1">
-                  <summary className="cursor-pointer text-[10px] text-red-700/80">
+                  <summary className="cursor-pointer text-[10px] text-slate-700/80">
                     Erkannte Spalten in deiner CSV ({detectedHeaders.length})
                   </summary>
-                  <p className="mt-1 break-words text-[10px] text-red-900/80">
+                  <p className="mt-1 break-words text-[10px] text-slate-900/80">
                     {detectedHeaders.join(" · ")}
                   </p>
                 </details>
@@ -213,15 +238,24 @@ export function MetaImportZone({
           </div>
         )}
 
-        {/* Aktive Imports */}
+        {/* Aktive Imports — verwalten (löschen) + neue oben hochladen */}
         {imports.length > 0 && (
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Aktive Imports (wirken auf den nächsten Generate-Run)
             </p>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              Pro Typ zählt der neueste. Zum Aktualisieren: alten löschen und
+              oben eine neue CSV hochladen.
+            </p>
             <div className="mt-1 space-y-1.5">
-              {imports.slice(0, 4).map((imp) => (
-                <ImportCard key={imp.id} record={imp} />
+              {imports.map((imp) => (
+                <ImportCard
+                  key={imp.id}
+                  record={imp}
+                  deleting={deletingId === imp.id}
+                  onDelete={handleDelete}
+                />
               ))}
             </div>
           </div>
@@ -256,7 +290,15 @@ export function MetaImportZone({
   );
 }
 
-function ImportCard({ record }: { record: ImportRecord }) {
+function ImportCard({
+  record,
+  deleting,
+  onDelete,
+}: {
+  record: ImportRecord;
+  deleting: boolean;
+  onDelete: (id: string) => void;
+}) {
   const meta = KIND_META[record.kind];
   const dateStr = new Date(record.created_at).toLocaleDateString("de-DE");
 
@@ -269,6 +311,20 @@ function ImportCard({ record }: { record: ImportRecord }) {
             · {record.row_count} Rows · {dateStr}
           </span>
         </span>
+        <button
+          type="button"
+          onClick={() => onDelete(record.id)}
+          disabled={deleting}
+          title="Diesen Import löschen"
+          aria-label="Diesen Import löschen"
+          className="-mr-1 shrink-0 self-start rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-red-600 disabled:opacity-50"
+        >
+          {deleting ? (
+            <span className="text-[10px]">…</span>
+          ) : (
+            <Icon name="trash" className="size-3.5" />
+          )}
+        </button>
       </div>
       <InsightsPreview record={record} />
     </div>
