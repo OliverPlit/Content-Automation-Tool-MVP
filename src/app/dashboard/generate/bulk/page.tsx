@@ -44,8 +44,9 @@ export default async function BulkGeneratePage() {
       <header className="mt-4 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-6 py-7 text-white shadow-xl shadow-slate-900/20">
         <h1 className="text-3xl font-bold tracking-tight">Bulk-Generate</h1>
         <p className="mt-1 max-w-xl text-sm text-slate-100">
-          Aus einem importierten Produktkatalog für jedes Produkt automatisch
-          Creatives erstellen. Erste Variante landet direkt im gewählten Projekt.
+          Produkt-CSV unten hochladen (oder einen früheren Import wählen), dann
+          für jedes Produkt automatisch Creatives erstellen. Alle Varianten
+          fließen ins Self-Learning-System (Hooks, Stile, Frameworks).
         </p>
       </header>
 

@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { PERSONAS, PLATFORMS } from "../schema";
+import { MetaImportZone } from "../meta-import-zone";
 import { startBulkGenerate, type BulkState } from "./actions";
 
 type ProductImport = {
@@ -25,32 +27,88 @@ export function BulkForm({
   imports: ProductImport[];
   projects: Project[];
 }) {
+  const router = useRouter();
   const [state, action, pending] = useActionState(startBulkGenerate, initial);
   const [selectedImport, setSelectedImport] = useState<string>(
     imports[0]?.id ?? "",
   );
+  // ID des frisch hochgeladenen Imports — sobald die Server-Liste nach refresh
+  // den Eintrag enthält, springt die Auswahl darauf.
+  const [pendingImportId, setPendingImportId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Legitimer "Daten aus Server-Refresh in lokalen State spiegeln"-Sync —
+    // der frisch hochgeladene Import muss aktiv werden, sobald die Server-Liste
+    // ihn nachzieht. Kein cascading render (genau eine Übernahme pro ID).
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (pendingImportId && imports.some((i) => i.id === pendingImportId)) {
+      setSelectedImport(pendingImportId);
+      setPendingImportId(null);
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [imports, pendingImportId]);
+
+  const handleProductsImport = (importId: string) => {
+    setPendingImportId(importId);
+    // Server-Liste neu laden, damit der frische Import in der Dropdown erscheint
+    router.refresh();
+  };
 
   const activeImport = imports.find((i) => i.id === selectedImport);
   const previewRows = activeImport?.insights?.rows ?? [];
 
-  if (imports.length === 0) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-900">
-        <p className="font-semibold">Kein Produktkatalog importiert.</p>
-        <p className="mt-1 text-xs">
-          Lade oben im Generate-Bereich erst eine Produkt-CSV hoch (Meta Catalog
-          Format: id, title, description, price, image_link, link).
-        </p>
-        <Link
-          href="/dashboard/generate"
-          className="mt-3 inline-block rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900"
-        >
-          → Zur Generate-Seite
-        </Link>
-      </div>
-    );
-  }
+  return (
+    <div className="space-y-4">
+      {/* Inline-Upload: direkt im Bulk-Modus eine Produkt-CSV hochladen.
+          Der frisch hochgeladene Import wird automatisch ausgewählt. */}
+      <MetaImportZone onProductsImport={handleProductsImport} />
 
+      {imports.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-900">
+          <p className="font-semibold">Noch kein Produktkatalog importiert.</p>
+          <p className="mt-1 text-xs">
+            Lade oben eine Produkt-CSV im Meta-Catalog-Format hoch (Spalten:
+            <code className="ml-1 rounded bg-white px-1">
+              id, title, description, price, image_link, link
+            </code>
+            ).
+          </p>
+        </div>
+      ) : (
+        <BulkFormBody
+          state={state}
+          action={action}
+          pending={pending}
+          imports={imports}
+          projects={projects}
+          selectedImport={selectedImport}
+          setSelectedImport={setSelectedImport}
+          previewRows={previewRows}
+        />
+      )}
+    </div>
+  );
+}
+
+function BulkFormBody({
+  state,
+  action,
+  pending,
+  imports,
+  projects,
+  selectedImport,
+  setSelectedImport,
+  previewRows,
+}: {
+  state: BulkState;
+  action: (formData: FormData) => void;
+  pending: boolean;
+  imports: ProductImport[];
+  projects: Project[];
+  selectedImport: string;
+  setSelectedImport: (id: string) => void;
+  previewRows: Array<{ title: string; price: string }>;
+}) {
   return (
     <form action={action} className="space-y-4">
       {/* Import-Auswahl */}
