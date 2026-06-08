@@ -4,16 +4,23 @@
  *  - Escaped Quotes ("" innerhalb von "...")
  *  - Trailing-Commas
  *  - CRLF + LF
+ *  - Auto-Erkennung des Trennzeichens (Komma vs. Semikolon vs. Tab) —
+ *    Google-Ads-Exports und deutsche Excel-CSVs nutzen Semikolon.
  *
  * Stripped down auf das Wesentliche — wir brauchen keine Excel-Spezialfälle.
  */
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string, delimiter?: string): string[][] {
+  // BOM entfernen
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+
+  // Trennzeichen auto-erkennen: wir prüfen die erste nicht-leere Zeile außerhalb
+  // von Quotes und nehmen das Zeichen mit den meisten Vorkommen.
+  const sep = delimiter ?? detectDelimiter(text);
+
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
   let inQuotes = false;
-  // BOM entfernen
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
@@ -34,7 +41,7 @@ export function parseCsv(text: string): string[][] {
       inQuotes = true;
       continue;
     }
-    if (c === ",") {
+    if (c === sep) {
       row.push(field);
       field = "";
       continue;
@@ -61,13 +68,71 @@ export function parseCsv(text: string): string[][] {
 }
 
 /**
- * Erzeugt Records (Spalten-Name → Wert) aus geparsten Rows.
- * Erste Row = Header.
+ * Erkennt das Spaltentrennzeichen anhand der ersten ~5 Zeilen außerhalb von
+ * Quotes. Komma > Semikolon > Tab, je nach Vorkommen. Default: Komma.
  */
-export function csvToRecords(rows: string[][]): Record<string, string>[] {
-  if (rows.length < 2) return [];
-  const headers = rows[0].map((h) => h.trim());
-  return rows.slice(1).map((row) => {
+function detectDelimiter(text: string): string {
+  const sample = text.slice(0, 4000);
+  let inQuotes = false;
+  const counts: Record<string, number> = { ",": 0, ";": 0, "\t": 0 };
+  for (let i = 0; i < sample.length; i++) {
+    const c = sample[i];
+    if (c === '"') inQuotes = !inQuotes;
+    if (inQuotes) continue;
+    if (c in counts) counts[c]++;
+  }
+  // Wir nehmen das Zeichen mit den meisten Vorkommen. Bei Gleichstand: Komma.
+  let best = ",";
+  let bestN = counts[","];
+  if (counts[";"] > bestN) {
+    best = ";";
+    bestN = counts[";"];
+  }
+  if (counts["\t"] > bestN) best = "\t";
+  return best;
+}
+
+/**
+ * Findet die echte Header-Zeile, falls die ersten Zeilen Report-Metadaten
+ * enthalten (typisch für Google-Ads-Exports: Zeile 1 = "Anzeigenbericht",
+ * Zeile 2 = Datumsbereich, Zeile 3 = echter Header). Wir nehmen die erste
+ * Zeile, die ≥ 5 nicht-leere Felder hat — Metadaten-Zeilen haben üblicherweise
+ * nur 1–2 Felder mit Inhalt.
+ */
+export function findHeaderRow(rows: string[][]): number {
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const r = rows[i];
+    const nonEmpty = r.filter((c) => c.trim().length > 0).length;
+    if (nonEmpty >= 5) return i;
+  }
+  return 0;
+}
+
+/**
+ * Filtert Aggregations-Zeilen am Ende eines Berichts heraus
+ * (Google-Ads: "Gesamt: Alle außer entfernte Anzeigen", "Gesamt: Konto", …).
+ * Diese erkennen wir an einer ersten Zelle, die mit "Gesamt:" / "Total:" /
+ * "Summe:" beginnt.
+ */
+export function dropTotalsRows(rows: string[][]): string[][] {
+  return rows.filter((r) => {
+    const first = (r[0] ?? "").trim().toLowerCase();
+    return !/^(gesamt|total|summe)\s*[:\-]/i.test(first);
+  });
+}
+
+/**
+ * Erzeugt Records (Spalten-Name → Wert) aus geparsten Rows.
+ * Erste Row = Header (oder explizit gesetzter Index für Berichte mit
+ * Metadaten-Vorzeilen wie Google-Ads).
+ */
+export function csvToRecords(
+  rows: string[][],
+  headerIndex = 0,
+): Record<string, string>[] {
+  if (rows.length < headerIndex + 2) return [];
+  const headers = rows[headerIndex].map((h) => h.trim());
+  return rows.slice(headerIndex + 1).map((row) => {
     const rec: Record<string, string> = {};
     headers.forEach((h, i) => {
       rec[h] = (row[i] ?? "").trim();
@@ -83,7 +148,8 @@ export type MetaImportKind =
   | "posts"
   | "ads_performance"
   | "audience"
-  | "products";
+  | "products"
+  | "google_ads";
 
 // Wir erkennen Meta, Google Ads, LinkedIn — deutsche und englische Spalten.
 // Jede Signatur-Gruppe = ein Sub-Muster. Mehr getroffene Sub-Muster = höherer Score.
@@ -111,6 +177,15 @@ const KIND_SIGNATURES: Record<MetaImportKind, RegExp[]> = {
     /\b(title|titel|name|produkt(?:name)?|product[\s_-]?name)\b/i,
     /\b(price|preis|availability|verfügbarkeit|image[\s_-]?link|bild[\s_-]?url|product[\s_-]?link|produkt[\s_-]?url|brand|marke)\b/i,
   ],
+  // Google Ads — Responsive Suchanzeigen-Bericht (deutsche UI).
+  // Eindeutige Marker, die in keinem Meta-Export vorkommen:
+  //   "Anzeigentitel 1..15", "Textzeile", "Anzeigeneffektivität",
+  //   "Interaktionsrate" (Google-spezifisch statt CTR), "Responsive Suchanzeige".
+  google_ads: [
+    /\banzeigentitel\s*\d+|\bheadline\s*\d+\b/i,
+    /\binteraktionsrate|interaktionen|anzeigeneffektivität|responsive\s+such/i,
+    /\b(anzeigengruppe|kampagne|finale\s+url|conv\.-rate|kosten\/conv)\b/i,
+  ],
 };
 
 const MIN_CONFIDENCE = 0.34; // mindestens 1 von 3 Sub-Mustern muss matchen
@@ -128,9 +203,19 @@ export function detectKind(headerRow: string[]): {
     for (const re of sigs) if (re.test(joined)) hits++;
     scores[kind] = hits / sigs.length;
   }
-  // Pick highest
+  // Pick highest. Spezifischere Kinds (kleinere Priority-Zahl) gewinnen bei
+  // Score-Gleichstand. Wichtig: ads_performance ist sehr breit und würde sonst
+  // Google-Ads-Exports „klauen", obwohl google_ads die spezifischere Signatur
+  // hat (Anzeigentitel-N + Interaktionsrate + Anzeigeneffektivität).
+  const PRIORITY: Record<MetaImportKind, number> = {
+    google_ads: 0,
+    products: 1,
+    audience: 2,
+    posts: 3,
+    ads_performance: 4,
+  };
   const entries = Object.entries(scores) as [MetaImportKind, number][];
-  entries.sort((a, b) => b[1] - a[1]);
+  entries.sort((a, b) => b[1] - a[1] || PRIORITY[a[0]] - PRIORITY[b[0]]);
   const [topKind, topScore] = entries[0];
   if (topScore < MIN_CONFIDENCE) {
     return { kind: null, confidence: topScore, scores };

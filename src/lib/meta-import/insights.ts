@@ -59,11 +59,34 @@ export type ProductsInsights = {
   rows: ProductRow[];
 };
 
+export type GoogleAdsInsights = {
+  totalAds: number;
+  /** Konto-CTR über alle ausgewerteten Anzeigen, in Prozent. */
+  accountCtr: number;
+  hookCtrMap: Array<{
+    hook: HookValue;
+    label: string;
+    avgCtr: number;
+    n: number;
+  }>;
+  topAds: Array<{
+    adGroup: string;
+    headline: string;
+    ctr: number;
+    impressions: number;
+    cost: number;
+    effectiveness: string;
+  }>;
+  bottomAds: Array<{ adGroup: string; headline: string; ctr: number }>;
+  effectivenessCounts: Record<string, number>;
+};
+
 export type AnyInsights =
   | { kind: "posts"; data: PostsInsights }
   | { kind: "ads_performance"; data: AdsPerfInsights }
   | { kind: "audience"; data: AudienceInsights }
-  | { kind: "products"; data: ProductsInsights };
+  | { kind: "products"; data: ProductsInsights }
+  | { kind: "google_ads"; data: GoogleAdsInsights };
 
 // ---------------------------------------------------------------------------
 // Hook-Classifier — testet einen Text gegen alle 12 Hook-Pattern und gibt
@@ -344,5 +367,142 @@ export function extractProductsInsights(
   return {
     totalProducts: rows.length,
     rows,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// E — Google Ads (Responsive Suchanzeigen-Bericht, deutsche UI).
+//
+// Eine Google-Ad hat bis zu 15 Headline-Komponenten (Anzeigentitel 1..15) und
+// 4 Description-Texte (Textzeile 1..4 + Beschreibung 3..5). Google mischt diese
+// dynamisch — es gibt KEINE eine Headline pro Ad. Für unsere Hook-CTR-Heuristik
+// klassifizieren wir deshalb ALLE Komponenten und schreiben die Performance je
+// erkanntem Hook anteilig zu (CTR und Impressions verteilt auf alle erkannten
+// Hooks dieser Ad). Das ist eine Näherung — saubere 1:1-Zuordnung kommt erst
+// mit dem Matching-Adapter in Phase C.
+// ---------------------------------------------------------------------------
+export function extractGoogleAdsInsights(
+  records: Record<string, string>[],
+): GoogleAdsInsights {
+  type Row = {
+    adGroup: string;
+    campaign: string;
+    impressions: number;
+    interactions: number;
+    ctr: number; // %
+    cost: number;
+    effectiveness: string;
+    headlines: string[];
+  };
+  const rows: Row[] = records
+    .map((r) => {
+      // Alle Anzeigentitel-Spalten einsammeln (1..15) — die genauen Namen
+      // variieren leicht ("Anzeigentitel 1" vs. "Headline 1"); wir scannen
+      // alle Keys, die mit diesem Muster anfangen.
+      const headlines: string[] = [];
+      for (const key of Object.keys(r)) {
+        if (/^\s*(anzeigentitel|headline)\s*\d+\s*$/i.test(key)) {
+          const v = (r[key] ?? "").trim();
+          if (v && v !== "--" && !/\{KeyWord/i.test(v)) headlines.push(v);
+        }
+      }
+      const adGroup = pick(r, "Anzeigengruppe", "Ad group", "Ad Group");
+      const campaign = pick(r, "Kampagne", "Campaign");
+      const impressions = Math.round(
+        toNumber(pick(r, "Impressionen", "Impressions", "Impr.")),
+      );
+      const interactions = Math.round(
+        toNumber(pick(r, "Interaktionen", "Interactions", "Clicks", "Klicks")),
+      );
+      const ctrRaw = pick(
+        r,
+        "Interaktionsrate",
+        "CTR",
+        "Klickrate",
+        "Click-through rate",
+      );
+      let ctr = toNumber(ctrRaw);
+      if (!ctrRaw.includes("%") && ctr > 0 && ctr < 1) ctr = ctr * 100;
+      const cost = toNumber(pick(r, "Kosten", "Cost", "Spend"));
+      const effectiveness = pick(
+        r,
+        "Anzeigeneffektivität",
+        "Ad strength",
+        "Ad Strength",
+      );
+      return {
+        adGroup,
+        campaign,
+        impressions,
+        interactions,
+        ctr,
+        cost,
+        effectiveness,
+        headlines,
+      };
+    })
+    .filter((r) => r.impressions > 0 && r.headlines.length > 0);
+
+  const totalImpr = rows.reduce((s, r) => s + r.impressions, 0);
+  const totalInt = rows.reduce((s, r) => s + r.interactions, 0);
+  const accountCtr = totalImpr > 0 ? (totalInt / totalImpr) * 100 : 0;
+
+  // Hook-CTR-Map: Performance jeder Ad auf alle erkannten Hooks gleich
+  // verteilen (gewichtet mit Impressions).
+  const buckets = new Map<HookValue, { sumWeightedCtr: number; n: number }>();
+  for (const row of rows) {
+    const hits = new Set<HookValue>();
+    for (const h of row.headlines) {
+      const hook = classifyHook(h);
+      if (hook) hits.add(hook);
+    }
+    if (hits.size === 0) continue;
+    for (const hook of hits) {
+      const b = buckets.get(hook) ?? { sumWeightedCtr: 0, n: 0 };
+      b.sumWeightedCtr += row.ctr * row.impressions;
+      b.n += row.impressions;
+      buckets.set(hook, b);
+    }
+  }
+  const hookCtrMap = Array.from(buckets.entries())
+    .map(([hook, b]) => ({
+      hook,
+      label: HOOKS.find((h) => h.value === hook)?.label ?? hook,
+      avgCtr: b.n > 0 ? Math.round((b.sumWeightedCtr / b.n) * 100) / 100 : 0,
+      n: b.n,
+    }))
+    .sort((a, b) => b.avgCtr - a.avgCtr);
+
+  // Top/Bottom-Ads — nach CTR sortiert, jeweils der erste Headline-Treffer
+  // als Anzeige-Label.
+  const sortedByCtr = [...rows].sort((a, b) => b.ctr - a.ctr);
+  const topAds = sortedByCtr.slice(0, 5).map((r) => ({
+    adGroup: r.adGroup,
+    headline: r.headlines[0] ?? "",
+    ctr: r.ctr,
+    impressions: r.impressions,
+    cost: r.cost,
+    effectiveness: r.effectiveness,
+  }));
+  const bottomAds = sortedByCtr
+    .filter((r) => r.ctr > 0)
+    .slice(-3)
+    .reverse()
+    .map((r) => ({ adGroup: r.adGroup, headline: r.headlines[0] ?? "", ctr: r.ctr }));
+
+  // Effektivitäts-Verteilung (Google bewertet jede Ad mit Sehr gut / Gut / …)
+  const effectivenessCounts: Record<string, number> = {};
+  for (const r of rows) {
+    const key = r.effectiveness || "Unbekannt";
+    effectivenessCounts[key] = (effectivenessCounts[key] ?? 0) + 1;
+  }
+
+  return {
+    totalAds: rows.length,
+    accountCtr: Math.round(accountCtr * 100) / 100,
+    hookCtrMap,
+    topAds,
+    bottomAds,
+    effectivenessCounts,
   };
 }

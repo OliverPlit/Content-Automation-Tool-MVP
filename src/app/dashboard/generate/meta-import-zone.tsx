@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/icon";
 
-type ImportKind = "posts" | "ads_performance" | "audience" | "products";
+type ImportKind =
+  | "posts"
+  | "ads_performance"
+  | "audience"
+  | "products"
+  | "google_ads";
 
 type ImportRecord = {
   id: string;
@@ -36,6 +41,11 @@ const KIND_META: Record<ImportKind, { label: string; emoji: string; hint: string
     emoji: "📦",
     hint: "Für Bulk-Generate: 1 Row → 1 Creative parallel.",
   },
+  google_ads: {
+    label: "Google Ads",
+    emoji: "🔎",
+    hint: "Such-Anzeigen-Performance (RSA): Konto-CTR + Hook-Trends fließen in die Lernschleife.",
+  },
 };
 
 export function MetaImportZone({
@@ -53,6 +63,14 @@ export function MetaImportZone({
     rowCount: number;
     autoDetected: boolean;
     confidence: number;
+    // Phase E: Match-Statistik aus dem Ads-Adapter (Meta oder Google).
+    outcomeMatch?: {
+      matched: number;
+      unmatched?: number;
+      baseline?: number;
+      skipped?: number;
+      total: number;
+    } | null;
   } | null>(null);
 
   useEffect(() => {
@@ -86,6 +104,13 @@ export function MetaImportZone({
         rowCount?: number;
         insights?: Record<string, unknown>;
         detection?: { autoDetected: boolean; confidence: number };
+        outcomeMatch?: {
+          matched: number;
+          unmatched?: number;
+          baseline?: number;
+          skipped?: number;
+          total: number;
+        } | null;
         headers?: string[];
         scores?: Record<string, number>;
         error?: string;
@@ -110,6 +135,7 @@ export function MetaImportZone({
         rowCount: json.rowCount ?? 0,
         autoDetected: json.detection?.autoDetected ?? false,
         confidence: json.detection?.confidence ?? 0,
+        outcomeMatch: json.outcomeMatch ?? null,
       });
 
       // Products → trigger bulk-generate callback wenn callback gesetzt
@@ -177,7 +203,8 @@ export function MetaImportZone({
             >
               <option value="">🪄 Typ auto-erkennen</option>
               <option value="posts">📝 Posts-Export</option>
-              <option value="ads_performance">📊 Ads Performance</option>
+              <option value="ads_performance">📊 Meta Ads Performance</option>
+              <option value="google_ads">🔎 Google Ads</option>
               <option value="audience">👥 Audience Insights</option>
               <option value="products">📦 Produktkatalog</option>
             </select>
@@ -207,12 +234,15 @@ export function MetaImportZone({
 
         {/* Last-Upload-Summary */}
         {lastSummary && (
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900">
-            ✓ <strong>{KIND_META[lastSummary.kind].label}</strong> importiert ·{" "}
-            {lastSummary.rowCount} Rows
-            {lastSummary.autoDetected
-              ? ` · auto-erkannt (${lastSummary.confidence}%)`
-              : " · manuell"}
+          <div className="space-y-1.5">
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900">
+              ✓ <strong>{KIND_META[lastSummary.kind].label}</strong> importiert ·{" "}
+              {lastSummary.rowCount} Rows
+              {lastSummary.autoDetected
+                ? ` · auto-erkannt (${lastSummary.confidence}%)`
+                : " · manuell"}
+            </div>
+            {lastSummary.outcomeMatch && <MatchBanner m={lastSummary.outcomeMatch} kind={lastSummary.kind} />}
           </div>
         )}
 
@@ -380,5 +410,99 @@ function InsightsPreview({ record }: { record: ImportRecord }) {
       </p>
     );
   }
+  if (record.kind === "google_ads") {
+    const acc = (ins.accountCtr as number) ?? 0;
+    const total = (ins.totalAds as number) ?? 0;
+    const map = (ins.hookCtrMap as Array<{ label: string; avgCtr: number }>) ?? [];
+    const top = map
+      .slice(0, 3)
+      .map((m) => `${m.label} ${m.avgCtr}%`)
+      .join(" · ");
+    return (
+      <p className="mt-0.5 text-slate-600">
+        {total} Anzeigen · Konto-CTR {acc}%
+        {top ? ` · Beste Hooks: ${top}` : ""}
+      </p>
+    );
+  }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// MatchBanner (Phase E) — zeigt das Ergebnis des Outcome-Adapters nach dem
+// Upload. Drei Fälle:
+//   - matched > 0: Performance landet bei konkreten Creatives (Lernsignal!)
+//   - baseline / unmatched: fließt als Konto-Baseline in die Priors
+//   - 0 Matches: Klartext-Hinweis, woran es liegt
+// ---------------------------------------------------------------------------
+function MatchBanner({
+  m,
+  kind,
+}: {
+  m: {
+    matched: number;
+    unmatched?: number;
+    baseline?: number;
+    skipped?: number;
+    total: number;
+  };
+  kind: ImportKind;
+}) {
+  const isGoogle = kind === "google_ads";
+  const baselineOrUnmatched = m.baseline ?? m.unmatched ?? 0;
+  const hasMatches = m.matched > 0;
+
+  if (!hasMatches && baselineOrUnmatched === 0 && (m.skipped ?? 0) === 0) {
+    return null; // nichts zu zeigen
+  }
+
+  return (
+    <div
+      className={
+        "rounded-md border px-3 py-2 text-xs " +
+        (hasMatches
+          ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+          : "border-amber-200 bg-amber-50 text-amber-900")
+      }
+    >
+      <p className="font-medium">
+        {hasMatches
+          ? `🎯 ${m.matched} von ${m.total} Anzeigen zu gespeicherten Creatives zugeordnet`
+          : `ℹ️ 0 Anzeigen konnten direkt zugeordnet werden`}
+      </p>
+      <p className="mt-0.5 leading-relaxed">
+        {baselineOrUnmatched > 0 && (
+          <>
+            {isGoogle ? "Konto-Baseline" : "Ohne Match"}: {baselineOrUnmatched}{" "}
+            {isGoogle
+              ? "— fließen in konto-weite Priors ein"
+              : "— Headlines passen zu keinem gespeicherten Creative"}
+            {(m.skipped ?? 0) > 0 ? " · " : ""}
+          </>
+        )}
+        {(m.skipped ?? 0) > 0 && (
+          <>Übersprungen: {m.skipped} (keine Impressions)</>
+        )}
+      </p>
+      {!hasMatches && (
+        <p className="mt-1.5 leading-relaxed">
+          {isGoogle ? (
+            <>
+              <strong>Warum?</strong> Google-Ads-Headlines passen exakt zu keiner
+              deiner gespeicherten Creative-Headlines. Das ist normal, wenn du
+              das Tool gerade erst nutzt. Die Performance landet trotzdem als
+              Konto-Baseline und fließt in die Lernschleife.
+            </>
+          ) : (
+            <>
+              <strong>Warum?</strong> Die Ad-Headlines in dieser CSV passen zu
+              keiner deiner im Tool gespeicherten Creative-Headlines. Nach dem
+              Generieren musst du die Anzeigen mit exakt derselben Headline bei
+              Meta ausspielen — sonst kann das Matching keinen Bezug herstellen.
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  );
 }

@@ -15,6 +15,13 @@ import type { HookValue } from "@/app/dashboard/generate/schema";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
+/**
+ * Phase B: Quellen-Filter. Default = beide Plattformen, damit das Lernen
+ * cold-start-schnell ist. Spätere Phasen können explizit nur Meta oder nur
+ * Google ziehen (z. B. wenn der Generator gezielt Meta-Creatives bauen soll).
+ */
+export type SourceFilter = "all" | "meta" | "google_ads";
+
 /** Beta-Posterior eines Achsen-Arms. mean = erwartete CTR (0..1). */
 export type AxisStat = { alpha: number; beta: number; mean: number; n: number };
 export type AxisPriors = Map<string, AxisStat>;
@@ -101,12 +108,15 @@ function toAxisPriors(acc: Accum): AxisPriors {
 export async function getPerformancePriors(
   supabase: SupabaseServerClient,
   userId: string,
+  source: SourceFilter = "all",
 ): Promise<PerformancePriors> {
   // 1) Outcomes mit Klicks/Impressions.
-  const { data: outcomes } = await supabase
+  let q = supabase
     .from("creative_outcomes")
     .select("creative_id, variant_index, clicks, impressions, fetched_at")
     .eq("user_id", userId);
+  if (source !== "all") q = q.eq("source", source);
+  const { data: outcomes } = await q;
   if (!outcomes || outcomes.length === 0) return emptyPriors();
 
   // 2) Features dieser Creatives.

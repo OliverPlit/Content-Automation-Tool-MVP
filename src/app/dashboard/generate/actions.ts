@@ -820,6 +820,10 @@ export async function generateAdCopy(
     manualPrefs,
     metaInsights.adsHookBoost,
     hookBoostFromPriors(perfPriors),
+    // Phase D: Google-Ads-Headlines fließen mit eigenem (schwächerem) Gewicht
+    // in die Hook-Reihenfolge ein. Über `metaInsights` kommt jetzt zusätzlich
+    // googleHookBoost.
+    metaInsights.googleHookBoost,
   );
   const plans = buildVariantPlan(
     variantCount,
@@ -1874,6 +1878,10 @@ export type MetaPromptInsights = {
   } | null;
   // Hook → CTR-Boost (–1..+1) für die Variant-Plan-Sortierung.
   adsHookBoost: Map<HookValue, number>;
+  // Phase D: gleicher Skala, aber aus Google-Ads-Headlines (Search Intent).
+  // Bekommt im Merge geringeres Gewicht, weil Search ≠ Browse — Übertragung
+  // auf Meta-Creatives ist indirekter.
+  googleHookBoost: Map<HookValue, number>;
 };
 
 export async function getMetaPromptInsights(
@@ -1884,7 +1892,7 @@ export async function getMetaPromptInsights(
     .from("meta_imports")
     .select("kind, insights, created_at")
     .eq("user_id", userId)
-    .in("kind", ["posts", "ads_performance", "audience"])
+    .in("kind", ["posts", "ads_performance", "audience", "google_ads"])
     .order("created_at", { ascending: false });
 
   const result: MetaPromptInsights = {
@@ -1892,6 +1900,7 @@ export async function getMetaPromptInsights(
     postsTopPhrases: [],
     audience: null,
     adsHookBoost: new Map(),
+    googleHookBoost: new Map(),
   };
   if (!data) return result;
 
@@ -1919,39 +1928,65 @@ export async function getMetaPromptInsights(
         topJobs: (ins.topJobs as string[]) ?? [],
       };
     } else if (kind === "ads_performance") {
-      // CTR-Map normalisieren auf -1..+1 Skala relativ zum Mittel.
-      const map = (ins.hookCtrMap as Array<{ hook: HookValue; avgCtr: number }>) ?? [];
-      if (map.length > 0) {
-        const ctrs = map.map((m) => m.avgCtr);
-        const mean = ctrs.reduce((a, b) => a + b, 0) / ctrs.length;
-        const max = Math.max(...ctrs, mean + 0.0001);
-        const min = Math.min(...ctrs, mean - 0.0001);
-        for (const m of map) {
-          // CTR > Mittel → positiver Boost, CTR < Mittel → negativ.
-          const range = m.avgCtr >= mean ? max - mean : mean - min;
-          const boost = range > 0 ? (m.avgCtr - mean) / range : 0;
-          result.adsHookBoost.set(m.hook, boost);
-        }
-      }
+      normalizeHookCtrMap(
+        ins.hookCtrMap as Array<{ hook: HookValue; avgCtr: number }> | undefined,
+        result.adsHookBoost,
+      );
+    } else if (kind === "google_ads") {
+      // Phase D: gleicher Skala wie Meta. Übertragung auf Meta-Creatives ist
+      // indirekter (Search Intent ≠ Browse Intent) — Gewichtung im Merge.
+      normalizeHookCtrMap(
+        ins.hookCtrMap as Array<{ hook: HookValue; avgCtr: number }> | undefined,
+        result.googleHookBoost,
+      );
     }
   }
   return result;
 }
 
-// Kombiniert manuelles 👍/👎 (Stufe 1) mit Ads-CTR-Boost (Stufe 2, aus
-// Headline-Klassifikation) und den gematchten Outcome-Priors (Phase 1, echte
-// CTR je Hook unserer Creatives). Gewichtung: gematchte Outcomes > aggregierter
-// Headline-Boost > subjektives Rating.
+/** CTR-Map auf -1..+1 normalisieren (CTR > Mittel → positiv, < Mittel → negativ). */
+function normalizeHookCtrMap(
+  map: Array<{ hook: HookValue; avgCtr: number }> | undefined,
+  out: Map<HookValue, number>,
+): void {
+  if (!map || map.length === 0) return;
+  const ctrs = map.map((m) => m.avgCtr);
+  const mean = ctrs.reduce((a, b) => a + b, 0) / ctrs.length;
+  const max = Math.max(...ctrs, mean + 0.0001);
+  const min = Math.min(...ctrs, mean - 0.0001);
+  for (const m of map) {
+    const range = m.avgCtr >= mean ? max - mean : mean - min;
+    const boost = range > 0 ? (m.avgCtr - mean) / range : 0;
+    out.set(m.hook, boost);
+  }
+}
+
+// Vier-Quellen-Merge mit klarer Gewichtung — stärkstes Signal gewinnt.
+// Skala je Signal: −1..+1.
+//   manual          ×1  — 👍/👎-Ratings, subjektiv
+//   adsBoost        ×2  — Meta-Ads-Headline-Klassifikation (aggregiert)
+//   googleBoost     ×1  — Google-Ads-Headline-Klassifikation (Search Intent,
+//                          indirektere Übertragung auf Meta-Creatives)
+//   priorsBoost     ×3  — echte gemessene CTR unserer eigenen Creatives
+//                          (über source='all' fließen Meta- + Google-Outcomes
+//                          unserer Creatives gleichermaßen ein)
 // Kein export — "use server"-Files erlauben nur async Funktions-Exporte.
 function mergeHookPreferences(
   manual: Map<HookValue, number>,
   adsBoost: Map<HookValue, number>,
   priorsBoost?: Map<HookValue, number>,
+  googleBoost?: Map<HookValue, number>,
 ): Map<HookValue, number> {
   const merged = new Map<HookValue, number>(manual);
   for (const [hook, boost] of adsBoost) {
     const cur = merged.get(hook) ?? 0;
     merged.set(hook, cur + boost * 2);
+  }
+  if (googleBoost) {
+    for (const [hook, boost] of googleBoost) {
+      const cur = merged.get(hook) ?? 0;
+      merged.set(hook, cur + boost * 1);
+    }
   }
   if (priorsBoost) {
     for (const [hook, boost] of priorsBoost) {

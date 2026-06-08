@@ -31,6 +31,8 @@ type OutcomeInsert = {
   cpa: number | null;
   source_import_id: string;
   fetched_at: string | null;
+  /** Phase B: Plattform-Quelle ('meta' für diesen Matcher). */
+  source: "meta" | "google_ads";
 };
 
 /** Headline-Normalisierung: case/whitespace/Trailing-Satzzeichen-insensitiv. */
@@ -155,13 +157,14 @@ export async function matchAdsToOutcomes(
       cpa,
       source_import_id: imp.id as string,
       fetched_at: (imp.created_at as string | null) ?? null,
+      source: "meta",
     });
   }
 
   if (outcomes.length > 0) {
     await supabase
       .from("creative_outcomes")
-      .upsert(outcomes, { onConflict: "user_id,ad_name" });
+      .upsert(outcomes, { onConflict: "user_id,ad_name,source" });
 
     // Phase 5: zusätzlich append-only Snapshot je Ad für die Fatigue-Zeitreihe.
     const history = outcomes.map((o) => ({
@@ -176,10 +179,13 @@ export async function matchAdsToOutcomes(
       conversions: o.conversions,
       source_import_id: o.source_import_id,
       fetched_at: o.fetched_at,
+      source: o.source,
     }));
     await supabase
       .from("creative_outcome_history")
-      .upsert(history, { onConflict: "user_id,ad_name,source_import_id" });
+      .upsert(history, {
+        onConflict: "user_id,ad_name,source,source_import_id",
+      });
   }
 
   return {

@@ -7,6 +7,7 @@
  * als Signifikanz-Gate (kein Alarm wegen Rauschen).
  */
 import type { createClient } from "@/lib/supabase/server";
+import type { SourceFilter } from "./priors";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -37,17 +38,26 @@ type HistRow = {
 export async function getFatigueCandidates(
   supabase: SupabaseServerClient,
   userId: string,
-  opts?: { minImpressions?: number; dropThreshold?: number; limit?: number },
+  opts?: {
+    minImpressions?: number;
+    dropThreshold?: number;
+    limit?: number;
+    /** Phase B: nach Plattform-Quelle filtern (Default: alle). */
+    source?: SourceFilter;
+  },
 ): Promise<FatigueCandidate[]> {
   const minImpr = opts?.minImpressions ?? FATIGUE_MIN_IMPRESSIONS;
   const drop = opts?.dropThreshold ?? FATIGUE_DROP;
   const limit = opts?.limit ?? 12;
+  const source = opts?.source ?? "all";
 
-  const { data: rows } = await supabase
+  let q = supabase
     .from("creative_outcome_history")
     .select("ad_name, creative_id, variant_index, ctr, impressions, fetched_at")
     .eq("user_id", userId)
     .order("fetched_at", { ascending: true });
+  if (source !== "all") q = q.eq("source", source);
+  const { data: rows } = await q;
   if (!rows || rows.length === 0) return [];
 
   // Nach Ad gruppieren (Reihenfolge bleibt aufsteigend nach fetched_at).

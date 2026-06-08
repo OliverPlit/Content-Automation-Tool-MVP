@@ -5,7 +5,11 @@
  * einem kompakten Kennzahlen-Set: misst, ob der Generator „nach oben" lernt.
  */
 import type { createClient } from "@/lib/supabase/server";
-import { getPerformancePriors, type AxisPriors } from "./priors";
+import {
+  getPerformancePriors,
+  type AxisPriors,
+  type SourceFilter,
+} from "./priors";
 import { getTopPerformers } from "./winners";
 import { getFatigueCandidates } from "./fatigue";
 
@@ -46,19 +50,23 @@ function leaderboard(axis: AxisPriors, top = 5): LeaderRow[] {
 export async function getLearningMetrics(
   supabase: SupabaseServerClient,
   userId: string,
+  source: SourceFilter = "all",
 ): Promise<LearningMetrics> {
+  let outcomeQuery = supabase
+    .from("creative_outcomes")
+    .select("impressions")
+    .eq("user_id", userId);
+  if (source !== "all") outcomeQuery = outcomeQuery.eq("source", source);
+
   const [priors, winnerSel, fatigue, featCount, outcomeAgg] = await Promise.all([
-    getPerformancePriors(supabase, userId),
-    getTopPerformers(supabase, userId),
-    getFatigueCandidates(supabase, userId),
+    getPerformancePriors(supabase, userId, source),
+    getTopPerformers(supabase, userId, { source }),
+    getFatigueCandidates(supabase, userId, { source }),
     supabase
       .from("creative_features")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId),
-    supabase
-      .from("creative_outcomes")
-      .select("impressions")
-      .eq("user_id", userId),
+    outcomeQuery,
   ]);
 
   const outcomeRows = (outcomeAgg.data ?? []) as { impressions: number | null }[];

@@ -10,6 +10,7 @@
  * (siehe getWinnerSeeds in actions.ts → genetische Iteration).
  */
 import type { createClient } from "@/lib/supabase/server";
+import type { SourceFilter } from "./priors";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -54,17 +55,25 @@ function percentile(sortedAsc: number[], p: number): number {
 export async function getTopPerformers(
   supabase: SupabaseServerClient,
   userId: string,
-  opts?: { minImpressions?: number; windowDays?: number },
+  opts?: {
+    minImpressions?: number;
+    windowDays?: number;
+    /** Phase B: nach Plattform-Quelle filtern (Default: alle). */
+    source?: SourceFilter;
+  },
 ): Promise<WinnerSelection> {
   const minImpr = opts?.minImpressions ?? WINNER_MIN_IMPRESSIONS;
   const windowDays = opts?.windowDays ?? WINNER_WINDOW_DAYS;
+  const source = opts?.source ?? "all";
   const since = new Date(Date.now() - windowDays * 86_400_000).toISOString();
 
-  const { data: rows } = await supabase
+  let q = supabase
     .from("creative_outcomes")
     .select("creative_id, variant_index, ctr, impressions, fetched_at")
     .eq("user_id", userId)
     .gte("impressions", minImpr);
+  if (source !== "all") q = q.eq("source", source);
+  const { data: rows } = await q;
 
   // Signifikanz-Gate + Zeitfenster (fetched_at fehlend → mitnehmen).
   const qualifying = (rows ?? []).filter((o) => {

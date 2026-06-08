@@ -4,17 +4,21 @@ import { createClient } from "@/lib/supabase/server";
 import {
   csvToRecords,
   detectKind,
+  dropTotalsRows,
+  findHeaderRow,
   parseCsv,
   type MetaImportKind,
 } from "@/lib/meta-import/csv";
 import {
   extractAdsPerfInsights,
   extractAudienceInsights,
+  extractGoogleAdsInsights,
   extractPostsInsights,
   extractProductsInsights,
   type AnyInsights,
 } from "@/lib/meta-import/insights";
 import { matchAdsToOutcomes } from "@/lib/meta-import/match-outcomes";
+import { matchGoogleAdsToOutcomes } from "@/lib/meta-import/match-google-outcomes";
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_EXT = ["csv", "tsv", "txt"];
@@ -55,13 +59,19 @@ export async function POST(req: Request) {
     // simple Exporte ohne Tabs in Werten).
     if (ext === "tsv") text = text.replace(/\t/g, ",");
 
-    const rows = parseCsv(text);
-    if (rows.length < 2) {
+    const rawRows = parseCsv(text);
+    if (rawRows.length < 2) {
       return NextResponse.json(
         { error: "CSV enthält keine Daten-Rows (mindestens Header + 1 Row nötig)." },
         { status: 400 },
       );
     }
+
+    // Echte Header-Zeile finden (Google-Ads-Berichte haben 2 Metadaten-Zeilen
+    // davor). Daten danach + Total/Gesamt-Zeilen am Ende abschneiden.
+    const headerIdx = findHeaderRow(rawRows);
+    const dataRows = dropTotalsRows(rawRows.slice(headerIdx + 1));
+    const rows = [rawRows[headerIdx], ...dataRows];
 
     // Kind-Detection (mit User-Override)
     const detected = detectKind(rows[0]);
@@ -70,6 +80,7 @@ export async function POST(req: Request) {
       "ads_performance",
       "audience",
       "products",
+      "google_ads",
     ];
     const forcedKind = validKinds.includes(forcedKindRaw as MetaImportKind)
       ? (forcedKindRaw as MetaImportKind)
@@ -104,6 +115,9 @@ export async function POST(req: Request) {
       case "products":
         insights = { kind, data: extractProductsInsights(records) };
         break;
+      case "google_ads":
+        insights = { kind, data: extractGoogleAdsInsights(records) };
+        break;
     }
 
     // DB-Insert. raw_csv kappen auf 1 MB Text damit DB-Row nicht explodiert.
@@ -132,11 +146,18 @@ export async function POST(req: Request) {
     // Self-Learning Phase 1: Bei Ads-Performance die Rows den gespeicherten
     // Creatives zuordnen und echte Outcomes schreiben. Soft-fail — der Import
     // selbst soll nie an der Zuordnung scheitern.
-    let outcomeMatch: { matched: number; unmatched: number; total: number } | null =
-      null;
+    let outcomeMatch:
+      | { matched: number; unmatched?: number; baseline?: number; skipped?: number; total: number }
+      | null = null;
     if (kind === "ads_performance") {
       try {
         outcomeMatch = await matchAdsToOutcomes(supabase, user.id);
+      } catch {
+        outcomeMatch = null;
+      }
+    } else if (kind === "google_ads") {
+      try {
+        outcomeMatch = await matchGoogleAdsToOutcomes(supabase, user.id);
       } catch {
         outcomeMatch = null;
       }
