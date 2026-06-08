@@ -16,7 +16,9 @@ import {
 } from "@/lib/creatomate/templates";
 
 const CREATOMATE_API_BASE = "https://api.creatomate.com/v1";
-const ACCENT_COLOR_DEFAULT = "#4F46E5"; // Indigo-600, passt zum übrigen UI
+// Hinweis: kein Hard-Default-Akzent mehr. Wenn weder Creative noch Folder eine
+// Brand-Farbe haben, senden wir keine Modification → Creatomate verwendet die
+// im Template hinterlegte Vorlagen-Farbe.
 
 export type RenderState = {
   ok: boolean;
@@ -203,7 +205,9 @@ async function startRenderInner(formData: FormData): Promise<RenderState> {
   //      auch wenn KEIN Folder zugewiesen ist) — höchste Priorität, weil das
   //      die Wahl beim Speichern war.
   //   2. Folder-Brand (project_folders) — falls Creative einem Folder zugehört.
-  //   3. Default-Indigo (ACCENT_COLOR_DEFAULT) — wenn nichts gesetzt.
+  //   3. Template-Default — wenn weder Creative noch Folder eine Brand-Farbe
+  //      gesetzt haben, schicken wir keine Color-Modification an Creatomate;
+  //      dann nimmt das Template seine eigene Vorlagen-Farbe.
   // Font-Family/Weight gibt es nur am Folder.
   type FolderBrandRow = {
     brand_primary_color: string | null;
@@ -336,10 +340,14 @@ async function startRenderInner(formData: FormData): Promise<RenderState> {
   // accent box). Creatomate silently ignores keys that don't match a real
   // element/property, so over-sending is safe.
   //
-  // Brand-Werte: wenn im Folder gesetzt, überschreiben sie die Defaults.
-  // Sonst Template-Default (kein Send).
-  const primaryColor = brand?.brand_primary_color ?? ACCENT_COLOR_DEFAULT;
-  const accentColor = brand?.brand_accent_color ?? primaryColor;
+  // Brand-Farben sind OPTIONAL. Nur wenn der User aktiv eine Brand-Farbe am
+  // Creative ODER am Folder gesetzt hat, wird sie ans Creatomate-Template
+  // gesendet (überschreibt dort die Template-Default-Farbe). Sonst senden wir
+  // keine Farbe → Creatomate verwendet die im Template hinterlegten Farben.
+  // Das war bisher anders: bei fehlender Brand wurde ACCENT_COLOR_DEFAULT
+  // (#4F46E5, Indigo) gesendet und überschrieb die Template-Vorlage.
+  const primaryColor = brand?.brand_primary_color ?? null;
+  const accentColor = brand?.brand_accent_color ?? null;
   const bgColor = brand?.brand_background_color ?? null;
   const textColor = brand?.brand_text_color ?? null;
   const fontFamily = brand?.brand_font_family ?? null;
@@ -358,14 +366,20 @@ async function startRenderInner(formData: FormData): Promise<RenderState> {
     "Background.source": imageUrlClean,
     "Image-URL": imageUrlClean,
     "Image-URL.source": imageUrlClean,
-    // Primary/Accent (CTA-Box-Hintergrund + Akzent-Shape)
-    "CTA-Box": primaryColor,
-    "CTA-Box.fill_color": primaryColor,
-    "Primary-Color": primaryColor,
-    "Primary-Color.fill_color": primaryColor,
-    "Accent-Color": accentColor,
-    "Accent-Color.fill_color": accentColor,
   };
+
+  // Brand-Primary (CTA-Box + Akzent-Shape) — nur wenn explizit gesetzt
+  if (primaryColor) {
+    modifications["CTA-Box"] = primaryColor;
+    modifications["CTA-Box.fill_color"] = primaryColor;
+    modifications["Primary-Color"] = primaryColor;
+    modifications["Primary-Color.fill_color"] = primaryColor;
+  }
+  // Brand-Accent — nur wenn explizit gesetzt (sonst Template-Default)
+  if (accentColor) {
+    modifications["Accent-Color"] = accentColor;
+    modifications["Accent-Color.fill_color"] = accentColor;
+  }
 
   // Brand-Text-Color (Headline + Subline)
   if (textColor) {
