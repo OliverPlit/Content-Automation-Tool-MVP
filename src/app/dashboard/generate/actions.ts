@@ -2056,8 +2056,12 @@ export async function getWinnerSeeds(): Promise<WinnerSeed[]> {
   if (!user) return [];
 
   const { winners } = await getTopPerformers(supabase, user.id);
-  return winners.map((w) => ({
-    id: `${w.creativeId}:${w.variantIndex}`,
+  // Konto-Baseline-Winners (aus Meta-/Google-Import ohne creative_id-Match)
+  // haben creativeId und variantIndex beide null → ohne Index-Suffix gibt
+  // `${null}:${null}` mehrfach denselben React-Key („null:null"). Deshalb
+  // hängen wir die Position als Tiebreaker an.
+  return winners.map((w, i) => ({
+    id: `${w.creativeId ?? "baseline"}:${w.variantIndex ?? "v"}:${i}`,
     headline: w.headline,
     ctr: w.ctr,
     impressions: w.impressions,
