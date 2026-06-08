@@ -98,7 +98,7 @@ export function VariantImageBlock({
       )}
 
       <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr]">
-        <div>
+        <div className="space-y-2">
           {live ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -110,6 +110,27 @@ export function VariantImageBlock({
             <div className="flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400">
               kein Bild
             </div>
+          )}
+
+          {/* Quick-Regenerate mit Nano Banana — unabhängig vom Source-Picker.
+              Klickbar sobald ein Bild da ist; benutzt dieselbe Server-Action,
+              aber mit fixen Hidden-Inputs (imageSource=ai, provider=gemini). */}
+          {live && (
+            <form action={formAction}>
+              <input type="hidden" name="id" value={creativeId} />
+              <input type="hidden" name="variantIndex" value={variantIndex} />
+              <input type="hidden" name="imageSource" value="ai" />
+              <input type="hidden" name="provider" value="gemini" />
+              <input type="hidden" name="customImageUrl" value="" />
+              <button
+                type="submit"
+                disabled={pending}
+                title="Neues Bild mit Nano Banana (Gemini 2.5 Flash Image) generieren"
+                className="flex w-full items-center justify-center gap-1.5 rounded-md bg-gradient-to-br from-amber-400 to-yellow-500 px-3 py-2 text-xs font-semibold text-amber-950 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+              >
+                {pending ? "Nano Banana arbeitet…" : "🍌 Mit Nano Banana neu generieren"}
+              </button>
+            </form>
           )}
         </div>
 

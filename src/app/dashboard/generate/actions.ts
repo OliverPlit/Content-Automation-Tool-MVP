@@ -1213,6 +1213,39 @@ const brandColorsZ = z.object({
   text: z.string().regex(/^#[0-9a-fA-F]{6}$/),
 });
 
+/**
+ * Brand-Felder fürs creatives-INSERT — damit Renders die Vorlagen-Farbe auch
+ * dann benutzen, wenn das Creative KEINEM Folder zugeordnet ist. Soft-fail:
+ * gibt {} bei ungültigem JSON, dann bleiben die Spalten NULL.
+ */
+function extractCreativeBrand(
+  brandColorsJson: string | undefined,
+  logoUrl: string | undefined,
+): Partial<{
+  brand_primary_color: string;
+  brand_accent_color: string;
+  brand_background_color: string;
+  brand_text_color: string;
+  brand_logo_url: string;
+}> {
+  const out: ReturnType<typeof extractCreativeBrand> = {};
+  if (brandColorsJson) {
+    try {
+      const c = brandColorsZ.parse(JSON.parse(brandColorsJson));
+      out.brand_primary_color = c.primary;
+      out.brand_accent_color = c.accent;
+      out.brand_background_color = c.background;
+      out.brand_text_color = c.text;
+    } catch {
+      // soft-fail: leeres Objekt, brand_*_color bleiben NULL
+    }
+  }
+  if (logoUrl && /^https?:\/\//i.test(logoUrl)) {
+    out.brand_logo_url = logoUrl;
+  }
+  return out;
+}
+
 const savePayloadSchema = z.object({
   product: z.string().min(1).max(500),
   audience: z.string().min(1).max(300),
@@ -1351,6 +1384,8 @@ Variante: ${variantIndex}`;
       prompt: promptText,
       output: JSON.stringify(adCopy),
       status: "completed",
+      // Brand am Creative speichern → Render zieht sie auch ohne Folder.
+      ...extractCreativeBrand(brandColorsJson, logoUrlIn),
     })
     .select("id")
     .single();
@@ -1600,6 +1635,8 @@ ${variants.length} Varianten`;
       prompt: promptText,
       output: JSON.stringify(adCopy),
       status: "completed",
+      // Brand am Creative speichern → Render zieht sie auch ohne Folder.
+      ...extractCreativeBrand(brandColorsJson, logoUrlIn),
     })
     .select("id")
     .single();

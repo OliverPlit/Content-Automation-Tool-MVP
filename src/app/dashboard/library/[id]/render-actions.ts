@@ -183,7 +183,9 @@ async function startRenderInner(formData: FormData): Promise<RenderState> {
     await Promise.all([
       supabase
         .from("creatives")
-        .select("id, output, folder_id")
+        .select(
+          "id, output, folder_id, brand_primary_color, brand_accent_color, brand_background_color, brand_text_color",
+        )
         .eq("id", creativeId)
         .single(),
       supabase
@@ -196,7 +198,13 @@ async function startRenderInner(formData: FormData): Promise<RenderState> {
   if (creativeErr || !creativeRow)
     return fail(`Creative nicht gefunden. ${creativeErr?.message ?? ""}`);
 
-  // Brand-Style aus dem Folder ziehen (falls vorhanden)
+  // Brand-Style — drei Quellen mit klarer Priorität:
+  //   1. Direkt am Creative gespeichert (aus saveCreative/saveAllVariants,
+  //      auch wenn KEIN Folder zugewiesen ist) — höchste Priorität, weil das
+  //      die Wahl beim Speichern war.
+  //   2. Folder-Brand (project_folders) — falls Creative einem Folder zugehört.
+  //   3. Default-Indigo (ACCENT_COLOR_DEFAULT) — wenn nichts gesetzt.
+  // Font-Family/Weight gibt es nur am Folder.
   type FolderBrandRow = {
     brand_primary_color: string | null;
     brand_accent_color: string | null;
@@ -205,8 +213,15 @@ async function startRenderInner(formData: FormData): Promise<RenderState> {
     brand_font_family: string | null;
     brand_font_weight: string | null;
   };
-  let brand: FolderBrandRow | null = null;
-  const folderId = (creativeRow as { folder_id: string | null }).folder_id;
+  type CreativeBrand = {
+    brand_primary_color: string | null;
+    brand_accent_color: string | null;
+    brand_background_color: string | null;
+    brand_text_color: string | null;
+  };
+  const creativeBrand = creativeRow as CreativeBrand & { folder_id: string | null };
+  let folderBrand: FolderBrandRow | null = null;
+  const folderId = creativeBrand.folder_id;
   if (folderId) {
     const { data: folderRow } = await supabase
       .from("project_folders")
@@ -215,8 +230,23 @@ async function startRenderInner(formData: FormData): Promise<RenderState> {
       )
       .eq("id", folderId)
       .single();
-    if (folderRow) brand = folderRow as FolderBrandRow;
+    if (folderRow) folderBrand = folderRow as FolderBrandRow;
   }
+  // Gemerged: Creative-Brand gewinnt; sonst Folder-Brand; sonst NULL.
+  const brand: FolderBrandRow = {
+    brand_primary_color:
+      creativeBrand.brand_primary_color ?? folderBrand?.brand_primary_color ?? null,
+    brand_accent_color:
+      creativeBrand.brand_accent_color ?? folderBrand?.brand_accent_color ?? null,
+    brand_background_color:
+      creativeBrand.brand_background_color ??
+      folderBrand?.brand_background_color ??
+      null,
+    brand_text_color:
+      creativeBrand.brand_text_color ?? folderBrand?.brand_text_color ?? null,
+    brand_font_family: folderBrand?.brand_font_family ?? null,
+    brand_font_weight: folderBrand?.brand_font_weight ?? null,
+  };
   if (!imageRow?.image_url) {
     return fail(
       "Für diese Variante existiert noch kein Bild — generiere zuerst ein Bild.",

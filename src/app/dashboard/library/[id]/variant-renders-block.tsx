@@ -159,14 +159,22 @@ export function VariantRendersBlock({
     });
   }, [renders, liveRenders, patches, removedIds]);
 
-  // Aktuelle Renders nach Kind: pro Kind den letzten (für Slot-Seed im Render-Tab)
+  // Aktuelle Renders nach Kind: ALLE Renders je Kind, neueste zuerst.
+  // Slots picken den Eintrag passend zu ihrem Slot-Index, damit zwei Slots
+  // mit demselben Format (z. B. beide static_1x1) parallel und unabhängig
+  // arbeiten — sonst zeigen sie denselben Render und Löschen träfe beide.
+  // Bereits entfernte Renders werden auch hier rausgefiltert, damit ein
+  // gelöschter Slot wieder leer ist und neu gerendert werden kann.
   const byKind = useMemo(() => {
-    const m = new Map<TemplateKind, RenderRecord>();
+    const m = new Map<TemplateKind, RenderRecord[]>();
     renders.forEach((r) => {
-      if (!m.has(r.templateKind)) m.set(r.templateKind, r);
+      if (removedIds.has(r.id)) return;
+      const list = m.get(r.templateKind) ?? [];
+      list.push(r);
+      m.set(r.templateKind, list);
     });
     return m;
-  }, [renders]);
+  }, [renders, removedIds]);
 
   const succeededRenders = useMemo(
     () => allRenders.filter((r) => r.status === "succeeded" && r.outputUrl),
@@ -358,7 +366,7 @@ function RenderTab({
 }: {
   creativeId: string;
   variantIndex: number;
-  byKind: Map<TemplateKind, RenderRecord>;
+  byKind: Map<TemplateKind, RenderRecord[]>;
   hasImage: boolean;
   previewImageUrl: string | null;
   headline: string;
@@ -460,11 +468,20 @@ function RenderTab({
         </p>
       )}
 
-      {/* 3 fixe Slots — Format pro Slot via Dropdown wählbar */}
+      {/* 3 fixe Slots — Format pro Slot via Dropdown wählbar. Mehrere Slots
+          mit demselben Kind sind unabhängig: Slot 1 nimmt Render Nr. 0,
+          Slot 2 mit gleichem Kind den Nr. 1 usw. So lässt sich dasselbe
+          Format parallel rendern. */}
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         {slotKinds.map((kind, idx) => {
           const tpl = TEMPLATE_META[kind];
-          const record = byKind.get(kind) ?? null;
+          const recordsOfKind = byKind.get(kind) ?? [];
+          const nthInKind = (() => {
+            let n = 0;
+            for (let i = 0; i < idx; i++) if (slotKinds[i] === kind) n++;
+            return n;
+          })();
+          const record = recordsOfKind[nthInKind] ?? null;
           return (
             <RenderSlot
               key={`slot-${idx}`}
