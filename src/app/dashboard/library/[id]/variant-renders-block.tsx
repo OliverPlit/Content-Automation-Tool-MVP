@@ -159,22 +159,25 @@ export function VariantRendersBlock({
     });
   }, [renders, liveRenders, patches, removedIds]);
 
-  // Aktuelle Renders nach Kind: ALLE Renders je Kind, neueste zuerst.
-  // Slots picken den Eintrag passend zu ihrem Slot-Index, damit zwei Slots
-  // mit demselben Format (z. B. beide static_1x1) parallel und unabhängig
-  // arbeiten — sonst zeigen sie denselben Render und Löschen träfe beide.
-  // Bereits entfernte Renders werden auch hier rausgefiltert, damit ein
-  // gelöschter Slot wieder leer ist und neu gerendert werden kann.
+  // Renders nach Kind, in stabiler Reihenfolge (Server liefert ASC nach
+  // created_at). Slot i picks recordsOfKind[i-tes-Vorkommen-dieses-Kinds],
+  // damit zwei Slots mit demselben Format (z. B. beide static_1x1) parallel
+  // arbeiten — Slot 0 zeigt den ältesten 1x1-Render, Slot 1 den nächsten usw.
+  // WICHTIG: removedIds wird hier NICHT gefiltert. Sonst würde beim Löschen
+  // eines Slots der nächste Render nach vorne rutschen („Slot 1 zeigt jetzt
+  // was vorher in Slot 2 war"). Stattdessen wird die Löschung erst beim
+  // Slot-Picking unten berücksichtigt: ist der gepickte Record gelöscht,
+  // bekommt der Slot `null` (= leer + neu renderbar), die anderen Slots
+  // bleiben unverändert.
   const byKind = useMemo(() => {
     const m = new Map<TemplateKind, RenderRecord[]>();
     renders.forEach((r) => {
-      if (removedIds.has(r.id)) return;
       const list = m.get(r.templateKind) ?? [];
       list.push(r);
       m.set(r.templateKind, list);
     });
     return m;
-  }, [renders, removedIds]);
+  }, [renders]);
 
   const succeededRenders = useMemo(
     () => allRenders.filter((r) => r.status === "succeeded" && r.outputUrl),
@@ -267,6 +270,7 @@ export function VariantRendersBlock({
             creativeId={creativeId}
             variantIndex={variantIndex}
             byKind={byKind}
+            removedIds={removedIds}
             hasImage={hasImage}
             previewImageUrl={previewImageUrl ?? null}
             headline={headline ?? ""}
@@ -355,6 +359,7 @@ function RenderTab({
   creativeId,
   variantIndex,
   byKind,
+  removedIds,
   hasImage,
   previewImageUrl,
   headline,
@@ -367,6 +372,7 @@ function RenderTab({
   creativeId: string;
   variantIndex: number;
   byKind: Map<TemplateKind, RenderRecord[]>;
+  removedIds: Set<string>;
   hasImage: boolean;
   previewImageUrl: string | null;
   headline: string;
@@ -481,7 +487,11 @@ function RenderTab({
             for (let i = 0; i < idx; i++) if (slotKinds[i] === kind) n++;
             return n;
           })();
-          const record = recordsOfKind[nthInKind] ?? null;
+          const candidate = recordsOfKind[nthInKind] ?? null;
+          // Gelöschte Records → Slot leer lassen, OHNE nachfolgende Slots
+          // nach vorne zu schieben. So bleibt das Slot↔Render-Mapping stabil.
+          const record =
+            candidate && removedIds.has(candidate.id) ? null : candidate;
           return (
             <RenderSlot
               key={`slot-${idx}`}

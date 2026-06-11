@@ -36,10 +36,13 @@ export default async function CreativeDetailPage({ params }: { params: Params })
     supabase
       .from("creative_renders")
       .select(
-        "id, variant_index, template_kind, template_slot, status, output_url, error_message, scheduled_at, post_status, target_platform, notes, saved_at",
+        "id, variant_index, template_kind, template_slot, status, output_url, error_message, scheduled_at, post_status, target_platform, notes, saved_at, created_at",
       )
       .eq("creative_id", id)
-      .order("created_at", { ascending: false }),
+      // ASC: ältester zuerst → Slot 0 nimmt den ältesten Render seines Kinds,
+      // Slot 1 den nächsten usw. So bleibt das Mapping über Re-Renders stabil
+      // und „der Slot in dem ich gerendert habe" zeigt weiterhin meinen Render.
+      .order("created_at", { ascending: true }),
     supabase
       .from("projects")
       .select("id, name")
@@ -66,27 +69,25 @@ export default async function CreativeDetailPage({ params }: { params: Params })
     productImageUrl: (r.product_image_url as string | null) ?? null,
   }));
 
-  const seenRender = new Set<string>();
-  const renders: RenderRecord[] = [];
-  (renderRows ?? []).forEach((r) => {
-    const key = `${r.variant_index}|${r.template_kind}`;
-    if (seenRender.has(key)) return;
-    seenRender.add(key);
-    renders.push({
-      id: r.id as string,
-      variantIndex: r.variant_index as number,
-      templateKind: r.template_kind as TemplateKind,
-      templateSlot: (r.template_slot as string | null) ?? null,
-      status: r.status as RenderRecord["status"],
-      outputUrl: (r.output_url as string | null) ?? null,
-      errorMessage: (r.error_message as string | null) ?? null,
-      postStatus: (r.post_status as RenderRecord["postStatus"]) ?? "draft",
-      scheduledAt: (r.scheduled_at as string | null) ?? null,
-      targetPlatform: (r.target_platform as string | null) ?? null,
-      notes: (r.notes as string | null) ?? null,
-      savedAt: (r.saved_at as string | null) ?? null,
-    });
-  });
+  // KEIN Dedup pro (variant, kind) mehr — sonst können zwei Slots mit dem
+  // gleichen Format niemals parallel zwei unabhängige Renders zeigen.
+  // Stattdessen liefert die Page ALLE Renders; die Slot-Logik in
+  // variant-renders-block ordnet sie pro Slot-Index zu (n-ter Render dieses
+  // Kinds → Slot n mit demselben Kind).
+  const renders: RenderRecord[] = (renderRows ?? []).map((r) => ({
+    id: r.id as string,
+    variantIndex: r.variant_index as number,
+    templateKind: r.template_kind as TemplateKind,
+    templateSlot: (r.template_slot as string | null) ?? null,
+    status: r.status as RenderRecord["status"],
+    outputUrl: (r.output_url as string | null) ?? null,
+    errorMessage: (r.error_message as string | null) ?? null,
+    postStatus: (r.post_status as RenderRecord["postStatus"]) ?? "draft",
+    scheduledAt: (r.scheduled_at as string | null) ?? null,
+    targetPlatform: (r.target_platform as string | null) ?? null,
+    notes: (r.notes as string | null) ?? null,
+    savedAt: (r.saved_at as string | null) ?? null,
+  }));
 
   const projects: ProjectOption[] = (projectRows ?? []).map((p) => ({
     id: p.id as string,
