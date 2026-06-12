@@ -378,7 +378,7 @@ export async function generateProductInScene(
     `- Photorealistic, shot on a 50mm f/1.8 lens: SHALLOW DEPTH OF FIELD — the product is tack-sharp, the background is softly blurred (natural bokeh).\n` +
     `- One consistent light source (warm golden-hour directional light); add a realistic, grounded contact shadow that anchors the product to the surface.\n` +
     `- Keep the product's exact shape, proportions, label text, logo and colors — readable and unchanged.\n` +
-    `- The background may show a contextual environment (machine, field, workshop) but MUST NOT contain any other product, canister, bottle, drum or packaging.\n` +
+    `- The background must be a contextual environment that matches the product described in the SCENE above (use whatever fits — e.g. application setting, real-world location of use). DO NOT default to a workshop or garage unless the scene explicitly calls for it. MUST NOT contain any other product, canister, bottle, drum or packaging.\n` +
     `- Aspect ratio: ${aspect}.\n\n` +
     `NEGATIVE: no studio polish, no commercial advertising look, no plastic-perfect surfaces, no duplicate products, no extra canisters or bottles, no text overlays, no watermarks, no deformed product, no AI artifacts, no lowres.\n` +
     `Output only the final photograph.`;

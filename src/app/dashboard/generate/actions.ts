@@ -375,24 +375,26 @@ LÄNGEN-VORGABEN (HART · Plattform-Standard):
   generischen Kategorie.${
     productFacts?.gebinde
       ? `
-  WICHTIG zur Gebinde-Größe (PFLICHT befolgen):
-   - Gebinde: "${productFacts.gebinde}" — die Szene MUSS zur realen physischen Größe passen.
-   - Bei 1000L IBC / 200L Fass: industrielle Szene (Lagerhalle, Hof, Stapler, Palette) — kein Hand-hält-Flasche, kein Tisch-Setting.
-   - Bei 60L / 20L: Werkstatt/Garage, jemand stellt den Eimer/Kanister ab, kein Display.
-   - Bei 5L / 1L: handheld, jemand hält ihn, normale Hand-Größe.
-   - Beschreibe im Prompt EXPLIZIT die Größe ("massive 1000L IBC tote dominating the frame", "large 200L drum standing next to person", "1-liter bottle held in hand").
+  WICHTIG zur Gebinde-GRÖSSE (nur die physische Maßstäblichkeit — KEINE Szene festlegen):
+   - Gebinde: "${productFacts.gebinde}" — die Skalierung muss zur realen Größe passen, aber das SETTING ergibt sich AUSSCHLIESSLICH aus dem Produkt-Kontext oben (Branche/Anwendung).
+   - 1000L IBC / 200L Fass: groß, steht am Boden in passender Anwendungs-Umgebung (Hof, Halle, Palette, Outdoor) — keine Hand-hält-Flasche, kein Tisch-Setting.
+   - 60L / 20L Eimer/Kanister: steht oder wird abgesetzt (Boden, niedrige Fläche, am Einsatzort).
+   - 5L / 1L: handheld in normaler Größe.
+   - Beschreibe die Größe explizit (z. B. "massive 1000L IBC tote dominating the frame", "20L bucket placed on the ground", "1-liter bottle held in hand").
+   - NIEMALS KFZ-Werkstatt / Garage / Hebebühne als Default annehmen, NUR wenn das Produkt nachweislich KFZ-bezogen ist (z. B. Motoröl, Bremsflüssigkeit).
 `
       : ""
-  } Beispiele:
-   - Motorradöl → Motorrad/Biker-Szene
-   - LKW-Diesel → LKW/Highway-Szene
-   - Werkstatt-Produkt → Werkstatt mit Hebebühne
-   - Hydraulik-Produkt → Industrie/Hydraulik-Setting
-   - Kosmetik → entsprechende Lifestyle-Szene
-   - Lebensmittel → entsprechende Food-Szene
-   - usw. — entscheide aus dem Produkt-Kontext oben!
-  Maschinen-Kontext-Hinweis (optional, falls passend): ${machineMeta.label} → ${machineMeta.sceneHint}
-  (Aber NUR verwenden wenn es zum Produkt passt — sonst frei wählen!)${sceneOverrideLine}${personaHandsLine}
+  } Beispiele für Szene-zu-Produkt-Mapping (NUR als Inspiration, Setting MUSS aus dem realen Produkt oben hergeleitet werden):
+   - Motorrad-Schmierstoff → Motorrad/Biker-Szene
+   - LKW-/Diesel-Additiv → LKW/Highway-Szene
+   - Hydrauliköl → Industrie/Hydraulik-Setting
+   - Landtechnik-Schmierstoff → Feld/Traktor-Szene
+   - KFZ-Motoröl → KFZ-Werkstatt (NUR dann!)
+   - Kosmetik / Pflege → entsprechende Lifestyle-Szene
+   - Lebensmittel → Küche / Food-Szene
+   - Reinigungs- / Industriechemie → reale Anwendungs-Umgebung (Halle, Reinigungs-Setup)
+   - usw. — entscheide AUS dem Produkt-Kontext oben! KEIN KFZ-/Werkstatt-Default bei unklarem Produkt.
+  Maschinen-Kontext-Hinweis (NUR als Stilanker; ignorieren wenn der Produkt-Kontext oben nichts mit ${machineMeta.label} zu tun hat): ${machineMeta.label} → ${machineMeta.sceneHint}${sceneOverrideLine}${personaHandsLine}
   Pflicht-Elemente:
    - Authentische, NICHT-werbliche Szene — wirkt wie ein candid Phone-Shot oder Doku-Foto, NICHT wie ein Werbefoto.
    - Stil-Basis: "authentic real-world scene, available light, candid moment, natural skin texture, ${platformMeta.aspectRatio} composition for ${platformMeta.label}"${styleLine}
