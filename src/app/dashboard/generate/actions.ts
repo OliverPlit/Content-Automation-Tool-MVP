@@ -305,7 +305,11 @@ ${platformMeta.hookBias.length ? `- Hook-Bias für diese Plattform: ${platformMe
       : "";
 
   // B5 — Mensch + Produkt-Interaktion (Doc 6.4 +44 % CTR).
-  // Bei Personas mit klarem Beruf erzwingen wir „real hands of {beruf}".
+  // Phase 4: humanRole kommt jetzt primär aus sceneSpec (LLM-abgeleitet aus
+  // audience + persona). Diese hartcodierte Map ist nur noch FALLBACK für
+  // die alten Schmieröl-Personas und greift NUR wenn der sceneSpec
+  // humanRole leer ist — sonst überschreibt der statische Hint die
+  // audience-aware dynamische Beschreibung.
   const personaHandsMap: Partial<Record<PersonaValue, string>> = {
     franz_landwirt: "real weathered hands of a farmer (jacket, dirt under nails) interacting with the product",
     klaus_werkstatt: "real grease-stained hands of a mechanic in workshop coveralls interacting with the product",
@@ -314,7 +318,8 @@ ${platformMeta.hookBias.length ? `- Hook-Bias für diese Plattform: ${platformMe
     michael_industrie: "real engineer hands in industrial setting checking the product",
     andreas_bau: "real construction worker hands with dust handling the product on a building site",
   };
-  const personaHandsHint = persona ? personaHandsMap[persona] : undefined;
+  const personaHandsHint =
+    persona && !sceneSpec?.humanRole ? personaHandsMap[persona] : undefined;
   const personaHandsLine = personaHandsHint
     ? `\n  Mensch-im-Bild (PFLICHT): ${personaHandsHint}. Gesicht muss nicht voll im Bild sein — Hände + Schulteransatz reichen. Wirkt authentisch, nicht gestellt.`
     : "";
@@ -490,16 +495,26 @@ Du bist Variante ${variantNumber} von ${variantTotal}.`;
   let bestIssues: string[] = [];
   let retryFeedback = "";
 
-  // Phase 2 — Scene-Inference. Statt fixer Branchen-Beispiele leitet ein
-  // kleiner LLM-Call aus product × audience × angle × frame die reale
-  // Anwendungs-Szene ab. Caching im Modul → identische Briefings teilen
-  // sich denselben Call. Bei fehlendem Key / Fehler: neutraler Fallback.
+  // Phase 2/3/4 — Scene-Inference. Aus product × audience × angle × frame
+  // × persuasionLever × hook × imageStyle × persona leitet ein kleiner
+  // LLM-Call die reale Anwendungs-Szene ab (Setting, Light/Mood, humanRole,
+  // Composition). Frame/Lever/Hook steuern explizit Mood UND Komposition
+  // (Phase 3); Audience+Persona steuern humanRole (Phase 4) — dadurch
+  // sind die generierten Bilder pro Variante WIRKLICH unterschiedlich,
+  // nicht nur per Prompt-Suffix gewackelt. Caching im Modul → identische
+  // Briefings teilen sich denselben Call. Bei fehlendem Key / Fehler:
+  // neutraler Fallback (frame-aware).
   const sceneSpec = await inferImageScene({
     product,
     audience,
     angle,
     frame,
     persuasionLever: plan.lever ?? undefined,
+    hookLabel: plan.hook.label,
+    imageStyleLabel: IMAGE_STYLES.find((s) => s.value === imageStyle)?.label,
+    personaLabel: persona
+      ? PERSONAS.find((p) => p.value === persona)?.label
+      : undefined,
     platformLabel: PLATFORMS.find((p) => p.value === platform)?.label,
     websiteText,
     gebinde: productFacts?.gebinde || undefined,

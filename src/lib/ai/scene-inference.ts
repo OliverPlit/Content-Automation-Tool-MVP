@@ -86,6 +86,12 @@ export type InferImageSceneInput = {
   frame?: string;
   /** authority / social-proof / scarcity / authenticity / … — optional */
   persuasionLever?: string;
+  /** Hook-Pattern (comparison / secret / number / question / …) — Komposition-Hint */
+  hookLabel?: string;
+  /** Image-Style-Label (raw / clean / lifestyle / …) — als Stilanker */
+  imageStyleLabel?: string;
+  /** Persona-Label (falls explizit gewählt) — als Person-im-Bild-Hint */
+  personaLabel?: string;
   /** Plattform-Format (für Composition-Hint) */
   platformLabel?: string;
   /** Crawl-Kontext (max 500 Zeichen wird verwendet) */
@@ -97,28 +103,61 @@ export type InferImageSceneInput = {
 };
 
 const SYSTEM_PROMPT = `Du bist ein Performance-Marketing-Bildkonzepter.
-Aus PRODUKT × ZIELGRUPPE × ANGLE × FRAME leitest du die REALE Anwendungs-
-Szene für ein Ad-Creative ab — KEIN Studio, KEIN Werbebild, KEIN generisches
-Stockfoto.
+Aus PRODUKT × ZIELGRUPPE × ANGLE × FRAME × PERSUASION-HEBEL × HOOK leitest
+du die REALE Anwendungs-Szene für ein Ad-Creative ab — KEIN Studio, KEIN
+Werbebild, KEIN generisches Stockfoto.
 
-PFLICHT-REGELN:
+GRUND-REGEL — Setting:
 - Die Szene MUSS zum tatsächlichen Produkt + zur Zielgruppe passen.
 - KEIN Branchen-Default (keine KFZ-Werkstatt, keine Industrie-Halle, keine
   Hydraulik-Pipes), wenn das Produkt nicht klar in diese Branche gehört.
-- Bei einem Kosmetik-Produkt → Lifestyle-/Pflege-Setting (Bad, Schminktisch,
-  Lichtdurchflutet). Bei Lebensmittel → Küche, Markt, Esstisch. Bei SaaS
-  → Schreibtisch, Co-Working, Laptop. Bei Mode → Outdoor/Indoor passend
-  zum Look. Bei Schmieröl/Industrie → die jeweilige Maschinen-/Anwendungs-
-  Umgebung.
-- Im 'forbidScenes' explizit ausschließen, was der LLM sonst falsch
-  defaulten würde (z. B. 'no auto repair workshop' bei Kosmetik).
-- FRAME steuert Mood:
-  * loss → düsterer/ernster (Konsequenz, leere Spritze, kaputte Hand, …)
-  * gain → optimistisch/erfolgreich (gepflegt, fertiges Ergebnis, …)
-  * neutral → ausgewogen, dokumentarisch
-- ZIELGRUPPE steuert humanRole: Beruf, Alter, Setting kommen aus der
-  Audience-Beschreibung. Wenn das Produkt allein stärker wirkt (Hero-
-  Shot ohne Mensch), gib humanRole als Leer-String zurück.
+- Kosmetik → Lifestyle/Pflege-Setting (Bad, Schminktisch, Lichtdurchflutet).
+- Lebensmittel → Küche, Markt, Esstisch.
+- SaaS/B2B-Software → Schreibtisch, Co-Working, Laptop.
+- Mode → Outdoor/Indoor passend zum Look.
+- Schmieröl/Industrie → Maschinen-/Anwendungs-Umgebung.
+- 'forbidScenes' explizit ausschließen, was der LLM sonst falsch defaulten
+  würde (z. B. 'no auto repair workshop' bei Kosmetik).
+
+FRAME steuert lightingMood UND inhaltliche Stimmung HART:
+- loss → kalt, ernst, problem-fokussiert: harte Schatten, kühles overcast
+  oder spätes graues Licht. Das Bild zeigt KONSEQUENZ — kaputte/leere/
+  verschmutzte/abgenutzte Variante des Anwendungs-Settings (z. B. trockene
+  Haut, kaputte Maschine, leerer Kühlschrank, gestresster Schreibtisch).
+- gain → warm, optimistisch, ERFOLG: weiches goldenes Licht, ruhig.
+  Das Bild zeigt das gepflegte/erfolgreiche/funktionierende Ergebnis
+  (gesunde Haut, laufende Maschine, gefüllter Esstisch, ruhiger Workflow).
+- neutral → ausgewogen, dokumentarisch: vorhandenes Tageslicht, kein
+  emotionales Statement, einfach „so sieht's aus wenn man es nutzt".
+
+PERSUASION-HEBEL steuert composition UND humanRole:
+- authority → Expert/Pro im Bild (Hände/Schulteransatz eines Profis aus
+  der Zielgruppe), close-up auf Vorgehen.
+- social-proof → mehrere Anwender sichtbar oder ein klar relatable
+  Anwender, environmentaler Shot.
+- scarcity → einzelnes Stück hervorgehoben, klares Solo-Subjekt,
+  reduzierte Komposition.
+- urgency → Bewegungs-Hint, leichte Unschärfe, Hand-im-Begriff-zu-greifen.
+- authenticity → roher Doku-Look, kein Posing, alltägliches Detail.
+- novelty → ungewöhnlicher Winkel/Perspektive (overhead, low-angle).
+- (Lever nicht angegeben → wähle composition frei nach Setting.)
+
+HOOK steuert composition zusätzlich (optional):
+- comparison → split-frame oder side-by-side-Andeutung (zwei Zustände).
+- secret/curiosity → close-up macro auf das ungewöhnliche Detail.
+- number/proof → das Subjekt klar zentriert, eine Zahl/ein Beweis-Element
+  könnte als Prop im Bild liegen (NICHT als Text-Overlay).
+- question → offene Komposition mit Raum für Text/Headline.
+
+ZIELGRUPPE → humanRole:
+- Person ergibt sich AUS der Audience-Beschreibung (Beruf, Alter,
+  Lebenswelt). Englisch, kompakt, z. B. 'hands of a young woman in a
+  bathroom applying the cream'.
+- Wenn der User eine PERSONA explizit ausgewählt hat, ist sie ein
+  Anker — leite humanRole konsistent dazu ab, aber wiederhole sie nicht
+  wörtlich.
+- Wenn das Produkt allein stärker wirkt (Hero-Shot ohne Mensch),
+  humanRole = Leer-String.
 
 OUTPUT: JSON nach Schema. Keine Erklärungen.`;
 
@@ -129,6 +168,9 @@ function buildUserPrompt(input: InferImageSceneInput): string {
   lines.push(`ANGLE: ${input.angle || "(direkt)"}`);
   if (input.frame) lines.push(`FRAME: ${input.frame}`);
   if (input.persuasionLever) lines.push(`PERSUASION-HEBEL: ${input.persuasionLever}`);
+  if (input.hookLabel) lines.push(`HOOK: ${input.hookLabel}`);
+  if (input.imageStyleLabel) lines.push(`IMAGE-STYLE-WUNSCH: ${input.imageStyleLabel}`);
+  if (input.personaLabel) lines.push(`PERSONA (vom User gewählt, als Anker): ${input.personaLabel}`);
   if (input.platformLabel) lines.push(`PLATTFORM-FORMAT: ${input.platformLabel}`);
   if (input.gebinde) lines.push(`GEBINDE: ${input.gebinde}`);
   if (input.industryHint && input.industryHint !== "auto") {
@@ -154,6 +196,9 @@ function cacheKey(input: InferImageSceneInput): string {
     g: input.angle,
     f: input.frame ?? "",
     l: input.persuasionLever ?? "",
+    h: input.hookLabel ?? "",
+    s: input.imageStyleLabel ?? "",
+    pr: input.personaLabel ?? "",
     plt: input.platformLabel ?? "",
     ge: input.gebinde ?? "",
     i: input.industryHint ?? "",
