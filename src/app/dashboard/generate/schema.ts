@@ -12,9 +12,20 @@ export const TONES = [
 ] as const;
 
 // ---------------------------------------------------------------------------
-// Maschinen-Kontext — bestimmt Bild-Szene + Texter-Subkontext
+// Branchen-Quick-Pick — OPTIONALER Stil-Anker für die Bild-Szene.
+// "auto" (Default) bedeutet: Szene wird AUS Produkt + Zielgruppe + Angle
+// abgeleitet, KEIN Branchen-Bias. Die folgenden Werte sind nur dann hilfreich,
+// wenn der User wirklich in einer dieser Branchen ist — sonst lieber "auto"
+// lassen. Historisch waren das harte Schmieröl-Defaults; durch "auto" können
+// jetzt beliebige Produkte (Kosmetik, Lebensmittel, SaaS, Mode, …) generiert
+// werden, ohne dass Werkstatt-/Industrie-Bilder erzwungen werden.
 // ---------------------------------------------------------------------------
 export const MACHINES = [
+  {
+    value: "auto",
+    label: "Automatisch (aus Produkt herleiten)",
+    sceneHint: "",
+  },
   {
     value: "landwirtschaft",
     label: "Landwirtschaft / Traktor",

@@ -332,8 +332,9 @@ PFLICHT-SPRACHE:
 - Aktive CTAs im Imperativ: "Jetzt bestellen!", "Direkt sichern!"
 - Keine Anglizismen ohne Grund
 ${addressingLine}
-${personaSection}${postsSection}${audienceSection}${factsSection}${platformSection}${urgencyLine}
-MASCHINEN-KONTEXT: ${machineMeta.label}
+${personaSection}${postsSection}${audienceSection}${factsSection}${platformSection}${urgencyLine}${
+  machine !== "auto" ? `\nBRANCHEN-KONTEXT: ${machineMeta.label}` : ""
+}
 ANGLE: ${angleMeta.label}
 ${angleMeta.voiceHint}
 ${websiteSection}
@@ -384,17 +385,18 @@ LÄNGEN-VORGABEN (HART · Plattform-Standard):
    - NIEMALS KFZ-Werkstatt / Garage / Hebebühne als Default annehmen, NUR wenn das Produkt nachweislich KFZ-bezogen ist (z. B. Motoröl, Bremsflüssigkeit).
 `
       : ""
-  } Beispiele für Szene-zu-Produkt-Mapping (NUR als Inspiration, Setting MUSS aus dem realen Produkt oben hergeleitet werden):
-   - Motorrad-Schmierstoff → Motorrad/Biker-Szene
-   - LKW-/Diesel-Additiv → LKW/Highway-Szene
-   - Hydrauliköl → Industrie/Hydraulik-Setting
-   - Landtechnik-Schmierstoff → Feld/Traktor-Szene
-   - KFZ-Motoröl → KFZ-Werkstatt (NUR dann!)
-   - Kosmetik / Pflege → entsprechende Lifestyle-Szene
-   - Lebensmittel → Küche / Food-Szene
-   - Reinigungs- / Industriechemie → reale Anwendungs-Umgebung (Halle, Reinigungs-Setup)
-   - usw. — entscheide AUS dem Produkt-Kontext oben! KEIN KFZ-/Werkstatt-Default bei unklarem Produkt.
-  Maschinen-Kontext-Hinweis (NUR als Stilanker; ignorieren wenn der Produkt-Kontext oben nichts mit ${machineMeta.label} zu tun hat): ${machineMeta.label} → ${machineMeta.sceneHint}${sceneOverrideLine}${personaHandsLine}
+  } Szene-Ableitung (PFLICHT — KEIN Branchen-Default):
+   - Leite das Setting AUSSCHLIESSLICH aus PRODUKT-Kontext + ZIELGRUPPE + ANGLE oben ab.
+   - Frage dich: Wo wird dieses konkrete Produkt von DIESER Zielgruppe IN DIESEM Frame realistisch genutzt/gekauft/erlebt?
+   - Verwende KEINE Branchen-Default-Szene (keine generische "Werkstatt", keine generische "Industrie-Halle", keine generische "Lagerhalle"), wenn der Produkt-Kontext oben sie nicht klar fordert.
+   - Bei einem klar branchen-spezifischen Produkt (Schmierstoff, KFZ-Produkt, Landtechnik) → die passende Anwendungs-Szene.
+   - Bei einem Konsum-/Pflege-/Lifestyle-/Food-/SaaS-Produkt → die passende Lifestyle-/Anwendungs-Szene.
+   - Im Zweifel: realistische Doku-Foto-Szene am tatsächlichen Einsatzort, nicht im Studio, nicht in der Werkstatt.${
+     machine !== "auto"
+       ? `
+  Branchen-Quick-Pick-Hinweis (vom User explizit gesetzt — als Stilanker nutzen, NICHT erzwingen wenn er nicht zum Produkt oben passt): ${machineMeta.label} → ${machineMeta.sceneHint}`
+       : ""
+   }${sceneOverrideLine}${personaHandsLine}
   Pflicht-Elemente:
    - Authentische, NICHT-werbliche Szene — wirkt wie ein candid Phone-Shot oder Doku-Foto, NICHT wie ein Werbefoto.
    - Stil-Basis: "authentic real-world scene, available light, candid moment, natural skin texture, ${platformMeta.aspectRatio} composition for ${platformMeta.label}"${styleLine}

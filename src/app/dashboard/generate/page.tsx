@@ -87,10 +87,11 @@ export default function GeneratePage() {
   const [productText, setProductText] = useState("");
   const [audienceText, setAudienceText] = useState("");
   const [toneValue, setToneValue] = useState<(typeof TONES)[number]["value"] | undefined>(undefined);
-  // Maschinen-Kontext unsichtbar gehalten — wird per Crawl-LLM-Inference gesetzt
-  // und steuert die Bild-Szene (sceneHint in schema.ts). Default fallback: industrie
-  // (neutralste Szene mit Pipes/Hydraulik, weniger spezifisch als „Traktor")
-  const [machineValue, setMachineValue] = useState<MachineValue>("industrie");
+  // Branchen-Quick-Pick — OPTIONAL. Default „auto" lässt die Szene aus
+  // Produkt + Zielgruppe + Angle herleiten (domain-agnostisch). Vorher war
+  // hier „industrie" hartcodiert → bei jedem Generate kam Pipes/Hydraulik
+  // ins Bild, auch wenn das Produkt z. B. Kosmetik oder Lebensmittel war.
+  const [machineValue, setMachineValue] = useState<MachineValue>("auto");
 
   // Persona + Anrede (Doc Kap. 2 + 7.4)
   const [persona, setPersona] = useState<PersonaValue | null>(null);
@@ -263,7 +264,7 @@ export default function GeneratePage() {
     setProductText("");
     setAudienceText("");
     setToneValue(undefined);
-    setMachineValue("industrie");
+    setMachineValue("auto");
     setPersona(null);
     setAddressing("du");
     setPlatform("universal");

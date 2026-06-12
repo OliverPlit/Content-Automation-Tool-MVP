@@ -101,7 +101,7 @@ async function inferFormFields(
       schema,
       system: `Du bist ein Performance-Marketing-Analyst. Aus einem Produkt-Webseiten-Text extrahierst Du die passenden Form-Felder für ein Ad-Creative-Tool.
 
-Maschinen-Kontext (machine) — wähle den BESTEN Match:
+Branchen-Quick-Pick (machine) — der Default ist "auto" (Szene wird aus dem Produkt selbst hergeleitet). Wähle NUR dann einen der spezifischen Werte (landwirtschaft, werkstatt, lkw, industrie, motorrad, bau, winterdienst), wenn das Produkt eindeutig in eine dieser Schmieröl-/Industrie-Branchen passt. Für ALLE anderen Branchen (Kosmetik, Lebensmittel, SaaS, Mode, Pflege, Reinigung, etc.) IMMER "auto" wählen — sonst wird ein falscher Branchen-Bias erzeugt:
 ${MACHINES.map((m) => `- ${m.value}: ${m.label}`).join("\n")}
 
 Werbe-Angle (angle) — was passt zur Produktseite?
