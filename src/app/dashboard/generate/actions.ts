@@ -4,6 +4,11 @@ import { experimental_generateImage as generateImage, generateObject } from "ai"
 import { openai } from "@/lib/ai/openai-client";
 import { google, googleKeyIsValid } from "@/lib/ai/google-client";
 import {
+  inferImageScene,
+  renderSceneSpecBlock,
+  type SceneSpec,
+} from "@/lib/ai/scene-inference";
+import {
   cropToAspect,
   generateProductInScene,
   generateSceneWithProduct,
@@ -139,6 +144,7 @@ function buildVariantPrompt(args: {
   urgency: boolean;
   productFacts?: ProductFacts | null;
   metaInsights?: MetaPromptInsights;
+  sceneSpec?: SceneSpec;
   sceneVariation: string;
 }): string {
   const {
@@ -158,6 +164,7 @@ function buildVariantPrompt(args: {
     urgency,
     productFacts,
     metaInsights,
+    sceneSpec,
     sceneVariation,
   } = args;
 
@@ -385,6 +392,12 @@ LÄNGEN-VORGABEN (HART · Plattform-Standard):
    - NIEMALS KFZ-Werkstatt / Garage / Hebebühne als Default annehmen, NUR wenn das Produkt nachweislich KFZ-bezogen ist (z. B. Motoröl, Bremsflüssigkeit).
 `
       : ""
+  }${
+    sceneSpec
+      ? `
+  ${renderSceneSpecBlock(sceneSpec)}
+`
+      : ""
   } Szene-Ableitung (PFLICHT — KEIN Branchen-Default):
    - Leite das Setting AUSSCHLIESSLICH aus PRODUKT-Kontext + ZIELGRUPPE + ANGLE oben ab.
    - Frage dich: Wo wird dieses konkrete Produkt von DIESER Zielgruppe IN DIESEM Frame realistisch genutzt/gekauft/erlebt?
@@ -477,6 +490,22 @@ Du bist Variante ${variantNumber} von ${variantTotal}.`;
   let bestIssues: string[] = [];
   let retryFeedback = "";
 
+  // Phase 2 — Scene-Inference. Statt fixer Branchen-Beispiele leitet ein
+  // kleiner LLM-Call aus product × audience × angle × frame die reale
+  // Anwendungs-Szene ab. Caching im Modul → identische Briefings teilen
+  // sich denselben Call. Bei fehlendem Key / Fehler: neutraler Fallback.
+  const sceneSpec = await inferImageScene({
+    product,
+    audience,
+    angle,
+    frame,
+    persuasionLever: plan.lever ?? undefined,
+    platformLabel: PLATFORMS.find((p) => p.value === platform)?.label,
+    websiteText,
+    gebinde: productFacts?.gebinde || undefined,
+    industryHint: machine,
+  });
+
   for (let attempt = 0; attempt < 3; attempt++) {
     const systemPrompt = buildVariantPrompt({
       plan,
@@ -495,6 +524,7 @@ Du bist Variante ${variantNumber} von ${variantTotal}.`;
       urgency,
       productFacts,
       metaInsights,
+      sceneSpec,
       sceneVariation:
         IMAGE_SCENE_VARIATIONS[
           (variantNumber - 1) % IMAGE_SCENE_VARIATIONS.length
